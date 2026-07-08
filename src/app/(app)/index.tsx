@@ -4,6 +4,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Panel, RowItem } from '@/components/finance/cards';
 import { ScreenShell } from '@/components/finance/screen-shell';
 import { ThemedText } from '@/components/themed-text';
+import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
 import { APP_ENV } from '@/lib/config';
 import { api, BudgetStatus, NotificationRead, TransactionRead } from '@/lib/api';
@@ -11,6 +12,7 @@ import { money } from '@/lib/format';
 
 export default function DashboardScreen() {
   const theme = useTheme();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [healthStatus, setHealthStatus] = useState('unknown');
@@ -70,7 +72,7 @@ export default function DashboardScreen() {
       subtitle="Personal finance cockpit for transactions, budgets, MSI and alerts.">
       <Panel title="Connection" caption="Backend and user context">
         <RowItem label="API" value={APP_ENV.apiBaseUrl} />
-        <RowItem label="User ID" value={APP_ENV.userId} />
+        <RowItem label="Signed in as" value={user?.username ?? '—'} />
         <RowItem label="Health" value={healthStatus} danger={healthStatus !== 'ok'} />
       </Panel>
 

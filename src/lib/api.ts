@@ -1,4 +1,5 @@
 import { APP_ENV } from '@/lib/config';
+import { getSession, notifyUnauthorized } from '@/lib/session';
 
 export type TransactionDirection = 'income' | 'expense';
 export type BudgetPeriod = 'week' | 'month' | 'year';
@@ -8,6 +9,32 @@ export type HealthRead = {
   status: string;
   app: string;
   version: string;
+};
+
+export type UserCreate = {
+  username: string;
+  password: string;
+  email?: string | null;
+  full_name?: string;
+};
+
+export type UserLogin = {
+  username: string;
+  password: string;
+};
+
+export type UserRead = {
+  id: number;
+  username: string;
+  email: string;
+  full_name: string;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type TokenRead = {
+  access_token: string;
+  token_type: string;
 };
 
 export type CategoryRead = {
@@ -34,6 +61,16 @@ export type TransactionRead = {
   source: string;
 };
 
+export type TransactionCreate = {
+  category_id?: number | null;
+  merchant_name: string;
+  description?: string;
+  direction: TransactionDirection;
+  amount: number | string;
+  occurred_at: string;
+  source?: string;
+};
+
 export type BudgetRead = {
   id: number;
   user_id: number;
@@ -51,6 +88,14 @@ export type BudgetStatus = BudgetRead & {
   is_over_limit: boolean;
 };
 
+export type BudgetCreate = {
+  category_id?: number | null;
+  name: string;
+  period: BudgetPeriod;
+  limit_amount: number | string;
+  starts_on: string;
+};
+
 export type MSIPlanRead = {
   id: number;
   user_id: number;
@@ -63,12 +108,26 @@ export type MSIPlanRead = {
   remaining_balance: string;
 };
 
+export type MSIPlanCreate = {
+  purchase_name: string;
+  start_date: string;
+  total_amount: number | string;
+  months_total: number;
+  monthly_payment: number | string;
+};
+
 export type MSIPaymentRead = {
   id: number;
   msi_plan_id: number;
   user_id: number;
   paid_on: string;
   amount: string;
+  payment_source: string;
+};
+
+export type MSIPaymentCreate = {
+  paid_on: string;
+  amount: number | string;
   payment_source: string;
 };
 
@@ -82,6 +141,12 @@ export type NotificationRead = {
   created_at: string;
 };
 
+export type NotificationCreate = {
+  type: NotificationType;
+  title: string;
+  message: string;
+};
+
 export type MailboxRead = {
   id: number;
   user_id: number;
@@ -92,24 +157,64 @@ export type MailboxRead = {
   is_active: boolean;
 };
 
+export type MailboxCreate = {
+  email_address: string;
+  host: string;
+  port?: number;
+  use_ssl?: boolean;
+};
+
+export type MailboxSummary = Record<string, string>;
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
 type RequestOptions = {
   method?: 'GET' | 'POST';
   body?: unknown;
+  skipAuth?: boolean;
 };
 
+async function extractErrorMessage(response: Response): Promise<string> {
+  const text = await response.text();
+  if (!text) return response.statusText || `Request failed with status ${response.status}`;
+  try {
+    const data = JSON.parse(text);
+    if (Array.isArray(data?.detail)) {
+      const messages = data.detail.map((item: { msg?: string }) => item.msg).filter(Boolean);
+      if (messages.length) return messages.join(' ');
+    }
+    if (typeof data?.detail === 'string') return data.detail;
+  } catch {
+    // Response body was not JSON; fall through to raw text.
+  }
+  return text;
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+  if (!options.skipAuth) {
+    const session = getSession();
+    if (session.token) headers.Authorization = `Bearer ${session.token}`;
+    if (session.userId != null) headers['X-User-Id'] = String(session.userId);
+  }
+
   const response = await fetch(`${APP_ENV.apiBaseUrl}/api/v1${path}`, {
     method: options.method ?? 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-User-Id': APP_ENV.userId,
-    },
+    headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`API ${response.status}: ${text || response.statusText}`);
+    if (response.status === 401 && !options.skipAuth) notifyUnauthorized();
+    throw new ApiError(response.status, await extractErrorMessage(response));
   }
 
   return (await response.json()) as T;
@@ -117,13 +222,28 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
 export const api = {
   health: () => request<HealthRead>('/health'),
+  register: (payload: UserCreate) => request<TokenRead>('/auth/register', { method: 'POST', body: payload, skipAuth: true }),
+  login: (payload: UserLogin) => request<TokenRead>('/auth/login', { method: 'POST', body: payload, skipAuth: true }),
+  me: () => request<UserRead>('/auth/me'),
   listCategories: () => request<CategoryRead[]>('/categories'),
   createCategory: (payload: CategoryCreate) => request<CategoryRead>('/categories', { method: 'POST', body: payload }),
   listTransactions: () => request<TransactionRead[]>('/transactions'),
+  createTransaction: (payload: TransactionCreate) =>
+    request<TransactionRead>('/transactions', { method: 'POST', body: payload }),
   listBudgets: () => request<BudgetRead[]>('/budgets'),
+  createBudget: (payload: BudgetCreate) => request<BudgetRead>('/budgets', { method: 'POST', body: payload }),
   listBudgetStatus: () => request<BudgetStatus[]>('/budgets/status'),
   listMSIPlans: () => request<MSIPlanRead[]>('/msi/plans'),
+  createMSIPlan: (payload: MSIPlanCreate) => request<MSIPlanRead>('/msi/plans', { method: 'POST', body: payload }),
   listMSIPayments: (planId: number) => request<MSIPaymentRead[]>(`/msi/plans/${planId}/payments`),
+  registerMSIPayment: (planId: number, payload: MSIPaymentCreate) =>
+    request<MSIPaymentRead>(`/msi/plans/${planId}/payments`, { method: 'POST', body: payload }),
   listNotifications: () => request<NotificationRead[]>('/notifications'),
+  createNotification: (payload: NotificationCreate) =>
+    request<NotificationRead>('/notifications', { method: 'POST', body: payload }),
   listMailboxes: () => request<MailboxRead[]>('/ingestion/mailboxes'),
+  createMailbox: (payload: MailboxCreate) =>
+    request<MailboxRead>('/ingestion/mailboxes', { method: 'POST', body: payload }),
+  getMailboxSummary: (mailboxId: number) =>
+    request<MailboxSummary>(`/ingestion/mailboxes/${mailboxId}/summary`),
 };
