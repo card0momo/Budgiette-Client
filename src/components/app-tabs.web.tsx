@@ -110,18 +110,16 @@ export function CustomTabList(props: TabListProps) {
             {...props}
             style={[
                 styles.tabListContainer,
-                isNarrow
-                    ? [
-                          styles.tabListContainerNarrow,
-                          { paddingBottom: Spacing.two + insets.bottom },
-                      ]
-                    : styles.tabListContainerWide,
+                isNarrow ? styles.tabListContainerNarrow : styles.tabListContainerWide,
             ]}>
             <ThemedView
                 type="backgroundElement"
                 style={[
                     styles.innerContainer,
-                    isNarrow && styles.innerContainerNarrow,
+                    isNarrow && [
+                        styles.innerContainerNarrow,
+                        { paddingBottom: Spacing.two + insets.bottom },
+                    ],
                 ]}>
                 {!isNarrow && (
                     <ThemedText type="smallBold" style={styles.brandText}>
