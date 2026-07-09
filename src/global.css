@@ -7,3 +7,18 @@
   --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
   --font-serif: Georgia, 'Times New Roman', serif;
 }
+
+/* Backstop so the safe-area strip under the iOS home indicator (in standalone
+   PWA mode) never shows the browser's default white instead of the app's
+   theme, regardless of whether 100% height ends up covering that area. */
+html,
+body {
+  background-color: #f8f4ee;
+}
+
+@media (prefers-color-scheme: dark) {
+  html,
+  body {
+    background-color: #101a24;
+  }
+}
