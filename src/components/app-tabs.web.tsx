@@ -13,7 +13,6 @@ import {
     StyleSheet,
     View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ThemedText } from "./themed-text";
 import { ThemedView } from "./themed-view";
@@ -103,7 +102,6 @@ export function TabButton({
 
 export function CustomTabList(props: TabListProps) {
     const isNarrow = useIsNarrowScreen();
-    const insets = useSafeAreaInsets();
 
     return (
         <View
@@ -116,10 +114,7 @@ export function CustomTabList(props: TabListProps) {
                 type="backgroundElement"
                 style={[
                     styles.innerContainer,
-                    isNarrow && [
-                        styles.innerContainerNarrow,
-                        { paddingBottom: Spacing.two + insets.bottom },
-                    ],
+                    isNarrow && [styles.innerContainerNarrow, styles.innerContainerNarrowSafeArea],
                 ]}>
                 {!isNarrow && (
                     <ThemedText type="smallBold" style={styles.brandText}>
@@ -174,6 +169,13 @@ const styles = StyleSheet.create({
         borderRadius: 0,
         gap: 0,
         maxWidth: "100%",
+    },
+    // react-native-safe-area-context measures insets on web via a hidden
+    // probe element (its own source flags this as inconsistent/delayed), so
+    // read the CSS environment variable directly instead for the one place
+    // this file needs it -- it's accurate immediately, no measurement pass.
+    innerContainerNarrowSafeArea: {
+        paddingBottom: `calc(${Spacing.two}px + env(safe-area-inset-bottom))` as unknown as number,
     },
     brandText: {
         marginRight: "auto",
