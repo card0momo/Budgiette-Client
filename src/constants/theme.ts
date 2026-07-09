@@ -69,3 +69,6 @@ export const Spacing = {
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
 export const MaxContentWidth = 800;
+
+/** Below this viewport width, the web tab bar switches to a bottom, icon-first layout. */
+export const NarrowBreakpoint = 600;
