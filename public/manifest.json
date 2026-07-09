@@ -1,0 +1,26 @@
+{
+  "name": "Budgiette",
+  "short_name": "Budgiette",
+  "description": "Personal finance cockpit for transactions, budgets, MSI and alerts.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#101A24",
+  "theme_color": "#101A24",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
