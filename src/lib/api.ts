@@ -155,6 +155,10 @@ export type MailboxRead = {
   port: number;
   use_ssl: boolean;
   is_active: boolean;
+  enabled_banks: string[];
+  sync_start_date: string;
+  last_synced_at: string | null;
+  last_sync_error: string | null;
 };
 
 export type MailboxCreate = {
@@ -162,9 +166,42 @@ export type MailboxCreate = {
   host: string;
   port?: number;
   use_ssl?: boolean;
+  password: string;
+  sync_start_date: string;
+  enabled_banks?: string[];
+};
+
+export type MailboxUpdate = {
+  password?: string;
+  is_active?: boolean;
+  enabled_banks?: string[];
 };
 
 export type MailboxSummary = Record<string, string>;
+
+export type BankInfo = {
+  key: string;
+  display_name: string;
+};
+
+export type SyncResult = {
+  fetched: number;
+  created: number;
+};
+
+export type AccountRead = {
+  id: number;
+  user_id: number;
+  display_name: string;
+  provider: string;
+  nickname: string | null;
+  account_number: string | null;
+};
+
+export type AccountUpdate = {
+  nickname?: string | null;
+  account_number?: string | null;
+};
 
 export class ApiError extends Error {
   status: number;
@@ -176,7 +213,7 @@ export class ApiError extends Error {
 }
 
 type RequestOptions = {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
   skipAuth?: boolean;
 };
@@ -217,6 +254,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     throw new ApiError(response.status, await extractErrorMessage(response));
   }
 
+  if (response.status === 204) return undefined as T;
+
   return (await response.json()) as T;
 }
 
@@ -241,9 +280,19 @@ export const api = {
   listNotifications: () => request<NotificationRead[]>('/notifications'),
   createNotification: (payload: NotificationCreate) =>
     request<NotificationRead>('/notifications', { method: 'POST', body: payload }),
+  listBanks: () => request<BankInfo[]>('/ingestion/banks'),
   listMailboxes: () => request<MailboxRead[]>('/ingestion/mailboxes'),
   createMailbox: (payload: MailboxCreate) =>
     request<MailboxRead>('/ingestion/mailboxes', { method: 'POST', body: payload }),
+  updateMailbox: (mailboxId: number, payload: MailboxUpdate) =>
+    request<MailboxRead>(`/ingestion/mailboxes/${mailboxId}`, { method: 'PATCH', body: payload }),
+  deleteMailbox: (mailboxId: number) =>
+    request<void>(`/ingestion/mailboxes/${mailboxId}`, { method: 'DELETE' }),
   getMailboxSummary: (mailboxId: number) =>
     request<MailboxSummary>(`/ingestion/mailboxes/${mailboxId}/summary`),
+  syncMailbox: (mailboxId: number) =>
+    request<SyncResult>(`/ingestion/mailboxes/${mailboxId}/sync`, { method: 'POST' }),
+  listAccounts: () => request<AccountRead[]>('/accounts'),
+  updateAccount: (accountId: number, payload: AccountUpdate) =>
+    request<AccountRead>(`/accounts/${accountId}`, { method: 'PATCH', body: payload }),
 };
