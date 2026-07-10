@@ -53,6 +53,7 @@ export type TransactionRead = {
   id: number;
   user_id: number;
   category_id: number | null;
+  account_id: number | null;
   merchant_name: string;
   description: string;
   direction: TransactionDirection;
@@ -69,6 +70,15 @@ export type TransactionCreate = {
   amount: number | string;
   occurred_at: string;
   source?: string;
+};
+
+export type TransactionUpdate = {
+  category_id?: number | null;
+  merchant_name?: string;
+  description?: string;
+  direction?: TransactionDirection;
+  amount?: number | string;
+  occurred_at?: string;
 };
 
 export type BudgetRead = {
@@ -269,6 +279,8 @@ export const api = {
   listTransactions: () => request<TransactionRead[]>('/transactions'),
   createTransaction: (payload: TransactionCreate) =>
     request<TransactionRead>('/transactions', { method: 'POST', body: payload }),
+  updateTransaction: (transactionId: number, payload: TransactionUpdate) =>
+    request<TransactionRead>(`/transactions/${transactionId}`, { method: 'PATCH', body: payload }),
   listBudgets: () => request<BudgetRead[]>('/budgets'),
   createBudget: (payload: BudgetCreate) => request<BudgetRead>('/budgets', { method: 'POST', body: payload }),
   listBudgetStatus: () => request<BudgetStatus[]>('/budgets/status'),
