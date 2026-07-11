@@ -15,7 +15,7 @@ export default function Root({ children }: PropsWithChildren) {
 
         {/* Expo already injects a favicon <link> from app.json's web.favicon config. */}
         <link rel="manifest" href="/manifest.json" />
-        <link rel="apple-touch-icon" href="/icon.png" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
         {/* Lets Safari (and other mobile browsers) run the app full-screen,
             without browser chrome, when added to the home screen. */}
