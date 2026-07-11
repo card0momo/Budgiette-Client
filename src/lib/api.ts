@@ -112,9 +112,19 @@ export type BudgetCreate = {
   starts_on: string;
 };
 
+export type BudgetUpdate = {
+  category_id?: number | null;
+  name?: string;
+  period?: BudgetPeriod;
+  limit_amount?: number | string;
+  starts_on?: string;
+  is_active?: boolean;
+};
+
 export type MSIPlanRead = {
   id: number;
   user_id: number;
+  card_id: number | null;
   purchase_name: string;
   start_date: string;
   total_amount: string;
@@ -125,11 +135,44 @@ export type MSIPlanRead = {
 };
 
 export type MSIPlanCreate = {
+  card_id?: number | null;
   purchase_name: string;
   start_date: string;
   total_amount: number | string;
   months_total: number;
   monthly_payment: number | string;
+};
+
+export type MSIPlanUpdate = {
+  card_id?: number | null;
+  purchase_name?: string;
+  start_date?: string;
+  total_amount?: number | string;
+  months_total?: number;
+  monthly_payment?: number | string;
+};
+
+export type CardRead = {
+  id: number;
+  user_id: number;
+  account_id: number | null;
+  nickname: string;
+  network: string;
+  last4: string;
+};
+
+export type CardCreate = {
+  account_id?: number | null;
+  nickname: string;
+  network: string;
+  last4: string;
+};
+
+export type CardUpdate = {
+  account_id?: number | null;
+  nickname?: string;
+  network?: string;
+  last4?: string;
 };
 
 export type MSIPaymentRead = {
@@ -316,12 +359,23 @@ export const api = {
     request<TransactionRead>(`/transactions/${transactionId}`, { method: 'PATCH', body: payload }),
   listBudgets: () => request<BudgetRead[]>('/budgets'),
   createBudget: (payload: BudgetCreate) => request<BudgetRead>('/budgets', { method: 'POST', body: payload }),
+  updateBudget: (budgetId: number, payload: BudgetUpdate) =>
+    request<BudgetRead>(`/budgets/${budgetId}`, { method: 'PATCH', body: payload }),
+  deleteBudget: (budgetId: number) => request<void>(`/budgets/${budgetId}`, { method: 'DELETE' }),
   listBudgetStatus: () => request<BudgetStatus[]>('/budgets/status'),
   listMSIPlans: () => request<MSIPlanRead[]>('/msi/plans'),
   createMSIPlan: (payload: MSIPlanCreate) => request<MSIPlanRead>('/msi/plans', { method: 'POST', body: payload }),
+  updateMSIPlan: (planId: number, payload: MSIPlanUpdate) =>
+    request<MSIPlanRead>(`/msi/plans/${planId}`, { method: 'PATCH', body: payload }),
+  deleteMSIPlan: (planId: number) => request<void>(`/msi/plans/${planId}`, { method: 'DELETE' }),
   listMSIPayments: (planId: number) => request<MSIPaymentRead[]>(`/msi/plans/${planId}/payments`),
   registerMSIPayment: (planId: number, payload: MSIPaymentCreate) =>
     request<MSIPaymentRead>(`/msi/plans/${planId}/payments`, { method: 'POST', body: payload }),
+  listCards: () => request<CardRead[]>('/cards'),
+  createCard: (payload: CardCreate) => request<CardRead>('/cards', { method: 'POST', body: payload }),
+  updateCard: (cardId: number, payload: CardUpdate) =>
+    request<CardRead>(`/cards/${cardId}`, { method: 'PATCH', body: payload }),
+  deleteCard: (cardId: number) => request<void>(`/cards/${cardId}`, { method: 'DELETE' }),
   listNotifications: () => request<NotificationRead[]>('/notifications'),
   createNotification: (payload: NotificationCreate) =>
     request<NotificationRead>('/notifications', { method: 'POST', body: payload }),

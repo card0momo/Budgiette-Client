@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/auth/primary-button';
 import { TextField } from '@/components/auth/text-field';
-import { Panel, RowItem } from '@/components/finance/cards';
+import { Chip, MenuField, Panel, RowItem } from '@/components/finance/cards';
 import { ScreenShell } from '@/components/finance/screen-shell';
 import { ThemedText } from '@/components/themed-text';
+import { useIsWideScreen } from '@/hooks/use-is-wide-screen';
 import { useTheme } from '@/hooks/use-theme';
 import { api, CategoryRead, TransactionDirection, TransactionRead } from '@/lib/api';
 import { money, shortDate } from '@/lib/format';
@@ -18,6 +19,8 @@ const PAGE_SIZE = 25;
 
 export default function TransactionsScreen() {
   const theme = useTheme();
+  const isWide = useIsWideScreen();
+  const showGrid = Platform.OS === 'web' && isWide;
   const [items, setItems] = useState<TransactionRead[]>([]);
   const [categories, setCategories] = useState<CategoryRead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -150,14 +153,18 @@ export default function TransactionsScreen() {
       {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
 
       <Panel title="Transactions" caption={`${filtered.length} of ${items.length}`}>
-        {pagedItems.map((tx) => (
-          <TransactionRow
-            key={tx.id}
-            transaction={tx}
-            category={tx.category_id != null ? categoryById.get(tx.category_id) : undefined}
-            onPress={() => setSelected(tx)}
-          />
-        ))}
+        <View style={showGrid ? styles.transactionGrid : undefined}>
+          {pagedItems.map((tx) => (
+            <View key={tx.id} style={showGrid ? styles.transactionGridItem : undefined}>
+              <TransactionRow
+                transaction={tx}
+                category={tx.category_id != null ? categoryById.get(tx.category_id) : undefined}
+                onPress={() => setSelected(tx)}
+                grid={showGrid}
+              />
+            </View>
+          ))}
+        </View>
         {!loading && filtered.length === 0 ? (
           <ThemedText themeColor="textSecondary">
             {items.length === 0
@@ -199,93 +206,16 @@ export default function TransactionsScreen() {
   );
 }
 
-function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  const theme = useTheme();
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      style={[
-        styles.chip,
-        {
-          backgroundColor: selected ? theme.tint : theme.backgroundElement,
-          borderColor: selected ? theme.tint : theme.backgroundSelected,
-        },
-      ]}>
-      <ThemedText type="small" style={{ color: selected ? theme.tintText : theme.text }}>
-        {label}
-      </ThemedText>
-    </Pressable>
-  );
-}
-
-function MenuField<T,>({
-  label,
-  valueLabel,
-  options,
-  selectedValue,
-  onSelect,
-}: {
-  label: string;
-  valueLabel: string;
-  options: { value: T; label: string }[];
-  selectedValue: T;
-  onSelect: (value: T) => void;
-}) {
-  const theme = useTheme();
-  const [open, setOpen] = useState(false);
-
-  return (
-    <View style={styles.menuField}>
-      <ThemedText type="small" themeColor="textSecondary">
-        {label}
-      </ThemedText>
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => setOpen(true)}
-        style={[styles.menuTrigger, { borderColor: theme.backgroundSelected, backgroundColor: theme.background }]}>
-        <ThemedText numberOfLines={1} style={styles.menuTriggerLabel}>
-          {valueLabel}
-        </ThemedText>
-        <ThemedText themeColor="textSecondary">▾</ThemedText>
-      </Pressable>
-
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable style={styles.menuBackdrop} onPress={() => setOpen(false)}>
-          <View style={[styles.menuCard, { backgroundColor: theme.background, borderColor: theme.backgroundSelected }]}>
-            <ScrollView>
-              {options.map((option, index) => {
-                const isSelected = option.value === selectedValue;
-                return (
-                  <Pressable
-                    key={index}
-                    onPress={() => {
-                      onSelect(option.value);
-                      setOpen(false);
-                    }}
-                    style={[styles.menuOption, isSelected && { backgroundColor: theme.backgroundSelected }]}>
-                    <ThemedText style={isSelected ? { color: theme.tint } : undefined}>{option.label}</ThemedText>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-        </Pressable>
-      </Modal>
-    </View>
-  );
-}
-
 function TransactionRow({
   transaction,
   category,
   onPress,
+  grid = false,
 }: {
   transaction: TransactionRead;
   category?: CategoryRead;
   onPress: () => void;
+  grid?: boolean;
 }) {
   const theme = useTheme();
   const emoji = getMerchantEmoji(transaction.merchant_name, transaction.description);
@@ -294,7 +224,10 @@ function TransactionRow({
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.row, { borderColor: theme.backgroundSelected, opacity: pressed ? 0.7 : 1 }]}>
+      style={({ pressed }) => [
+        grid ? styles.rowGrid : styles.row,
+        { borderColor: theme.backgroundSelected, opacity: pressed ? 0.7 : 1 },
+      ]}>
       <ThemedText style={styles.rowEmoji}>{emoji}</ThemedText>
       <View style={styles.rowMain}>
         <ThemedText numberOfLines={1}>{transaction.merchant_name}</ThemedText>
@@ -479,18 +412,28 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
-  chip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  rowGrid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderRadius: 10,
+  },
+  transactionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  transactionGridItem: {
+    width: '50%',
   },
   rowEmoji: {
     fontSize: 20,
@@ -527,39 +470,5 @@ const styles = StyleSheet.create({
   },
   newCategoryInput: {
     flex: 1,
-  },
-  menuField: {
-    gap: 4,
-  },
-  menuTrigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  menuTriggerLabel: {
-    flex: 1,
-  },
-  menuBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  menuCard: {
-    width: '100%',
-    maxWidth: 360,
-    maxHeight: '70%',
-    borderWidth: 1,
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-  menuOption: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
   },
 });
