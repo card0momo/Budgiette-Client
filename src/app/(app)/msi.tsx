@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/auth/primary-button';
 import { TextField } from '@/components/auth/text-field';
@@ -9,6 +9,7 @@ import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/hooks/use-theme';
 import { api, CardRead, MSIPlanRead } from '@/lib/api';
 import { money, shortDate } from '@/lib/format';
+import { getMerchantEmoji } from '@/lib/merchant-icons';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -24,6 +25,7 @@ export default function MSIScreen() {
   const [cards, setCards] = useState<CardRead[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<MSIPlanRead | null>(null);
 
   async function loadAll() {
     try {
@@ -65,20 +67,34 @@ export default function MSIScreen() {
       {loading ? <ActivityIndicator color={theme.text} /> : null}
       {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
 
-      {plans.map((plan) => (
-        <PlanCard
-          key={plan.id}
-          plan={plan}
-          card={plan.card_id != null ? cardById.get(plan.card_id) : undefined}
-          cardOptions={cardOptions}
-          onChanged={loadAll}
-        />
-      ))}
+      <Panel title="Plans" caption={`${plans.length} plan(s)`}>
+        {plans.map((plan) => (
+          <PlanRow
+            key={plan.id}
+            plan={plan}
+            card={plan.card_id != null ? cardById.get(plan.card_id) : undefined}
+            onPress={() => setSelectedPlan(plan)}
+          />
+        ))}
 
-      {!loading && plans.length === 0 ? (
-        <ThemedText themeColor="textSecondary">
-          No MSI plans yet. Add plans from your purchases and payments to monitor debt commitments.
-        </ThemedText>
+        {!loading && plans.length === 0 ? (
+          <ThemedText themeColor="textSecondary">
+            No MSI plans yet. Add plans from your purchases and payments to monitor debt commitments.
+          </ThemedText>
+        ) : null}
+      </Panel>
+
+      {selectedPlan ? (
+        <PlanDetailModal
+          plan={selectedPlan}
+          card={selectedPlan.card_id != null ? cardById.get(selectedPlan.card_id) : undefined}
+          cardOptions={cardOptions}
+          onClose={() => setSelectedPlan(null)}
+          onChanged={() => {
+            loadAll();
+            setSelectedPlan(null);
+          }}
+        />
       ) : null}
     </ScreenShell>
   );
@@ -286,18 +302,51 @@ function PlanForm({ cardOptions, onCreated }: { cardOptions: CardOption[]; onCre
   );
 }
 
-function PlanCard({
+function PlanRow({
+  plan,
+  card,
+  onPress,
+}: {
+  plan: MSIPlanRead;
+  card?: CardRead;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  const emoji = getMerchantEmoji(plan.purchase_name);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, { borderColor: theme.backgroundSelected, opacity: pressed ? 0.7 : 1 }]}>
+      <ThemedText style={styles.rowEmoji}>{emoji}</ThemedText>
+      <View style={styles.rowMain}>
+        <ThemedText numberOfLines={1}>{plan.purchase_name}</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+          {plan.payments_done}/{plan.months_total} months{card ? ` · ${card.nickname}` : ''}
+        </ThemedText>
+      </View>
+      <ThemedText>{money(plan.remaining_balance)}</ThemedText>
+    </Pressable>
+  );
+}
+
+function PlanDetailModal({
   plan,
   card,
   cardOptions,
+  onClose,
   onChanged,
 }: {
   plan: MSIPlanRead;
   card?: CardRead;
   cardOptions: CardOption[];
+  onClose: () => void;
   onChanged: () => void;
 }) {
   const theme = useTheme();
+  const emoji = getMerchantEmoji(plan.purchase_name);
+  const [editing, setEditing] = useState(false);
+
   const [purchaseName, setPurchaseName] = useState(plan.purchase_name);
   const [cardId, setCardId] = useState<number | null>(plan.card_id);
   const [startDate, setStartDate] = useState(plan.start_date);
@@ -314,6 +363,17 @@ function PlanCard({
   const [registeringPayment, setRegisteringPayment] = useState(false);
 
   const isComplete = plan.payments_done >= plan.months_total;
+
+  function handleStartEditing() {
+    setPurchaseName(plan.purchase_name);
+    setCardId(plan.card_id);
+    setStartDate(plan.start_date);
+    setTotalAmount(plan.total_amount);
+    setMonthsTotal(String(plan.months_total));
+    setMonthlyPayment(plan.monthly_payment);
+    setError(null);
+    setEditing(true);
+  }
 
   function validate(): string | null {
     if (!purchaseName.trim()) return 'Enter what you bought.';
@@ -386,7 +446,6 @@ function PlanCard({
         amount: paymentAmount,
         payment_source: paymentSource.trim(),
       });
-      setPaymentSource('');
       onChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not register payment.');
@@ -396,58 +455,113 @@ function PlanCard({
   }
 
   return (
-    <Panel title={plan.purchase_name} caption={`Started ${shortDate(plan.start_date)}${card ? ` · ${card.nickname}` : ''}`}>
-      <RowItem label="Total" value={money(plan.total_amount)} />
-      <RowItem label="Monthly" value={money(plan.monthly_payment)} />
-      <RowItem label="Months" value={`${plan.payments_done}/${plan.months_total}`} />
-      <RowItem label="Left to pay" value={money(plan.remaining_balance)} danger={Number(plan.remaining_balance) > 0 && isComplete} />
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <View style={[styles.modalCard, { backgroundColor: theme.background, borderColor: theme.backgroundSelected }]}>
+          <ScrollView contentContainerStyle={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <ThemedText type="subtitle">
+                {emoji} {plan.purchase_name}
+              </ThemedText>
+              <Pressable onPress={onClose}>
+                <ThemedText type="link" themeColor="tint">
+                  Close
+                </ThemedText>
+              </Pressable>
+            </View>
 
-      <TextField label="Purchase" value={purchaseName} onChangeText={setPurchaseName} />
+            {!editing ? (
+              <>
+                <RowItem label="Total" value={money(plan.total_amount)} />
+                <RowItem label="Monthly" value={money(plan.monthly_payment)} />
+                <RowItem label="Months" value={`${plan.payments_done}/${plan.months_total}`} />
+                <RowItem
+                  label="Left to pay"
+                  value={money(plan.remaining_balance)}
+                  danger={Number(plan.remaining_balance) > 0 && isComplete}
+                />
+                <RowItem label="Started" value={shortDate(plan.start_date)} />
+                <RowItem label="Card" value={card ? card.nickname : 'No card'} />
 
-      <MenuField
-        label="Card"
-        valueLabel={cardOptions.find((opt) => opt.value === cardId)?.label ?? 'No card'}
-        selectedValue={cardId}
-        onSelect={setCardId}
-        options={cardOptions}
-      />
+                {error ? (
+                  <ThemedText type="small" style={{ color: theme.danger }}>
+                    {error}
+                  </ThemedText>
+                ) : null}
 
-      <TextField label="Start date" value={startDate} onChangeText={setStartDate} placeholder="YYYY-MM-DD" autoCapitalize="none" />
-      <TextField label="Total amount" value={totalAmount} onChangeText={setTotalAmount} keyboardType="decimal-pad" />
-      <TextField label="Months" value={monthsTotal} onChangeText={setMonthsTotal} keyboardType="number-pad" />
-      <TextField label="Monthly payment" value={monthlyPayment} onChangeText={setMonthlyPayment} keyboardType="decimal-pad" />
+                <PrimaryButton label="Edit" variant="secondary" onPress={handleStartEditing} />
+              </>
+            ) : (
+              <>
+                <TextField label="Purchase" value={purchaseName} onChangeText={setPurchaseName} />
 
-      {error ? (
-        <ThemedText type="small" style={{ color: theme.danger }}>
-          {error}
-        </ThemedText>
-      ) : null}
+                <MenuField
+                  label="Card"
+                  valueLabel={cardOptions.find((opt) => opt.value === cardId)?.label ?? 'No card'}
+                  selectedValue={cardId}
+                  onSelect={setCardId}
+                  options={cardOptions}
+                />
 
-      <PrimaryButton label="Save changes" loading={saving} onPress={handleSave} />
-      <PrimaryButton label="Delete plan" variant="secondary" loading={removing} onPress={handleDelete} />
+                <TextField
+                  label="Start date"
+                  value={startDate}
+                  onChangeText={setStartDate}
+                  placeholder="YYYY-MM-DD"
+                  autoCapitalize="none"
+                />
+                <TextField label="Total amount" value={totalAmount} onChangeText={setTotalAmount} keyboardType="decimal-pad" />
+                <TextField label="Months" value={monthsTotal} onChangeText={setMonthsTotal} keyboardType="number-pad" />
+                <TextField
+                  label="Monthly payment"
+                  value={monthlyPayment}
+                  onChangeText={setMonthlyPayment}
+                  keyboardType="decimal-pad"
+                />
 
-      {!isComplete ? (
-        <View style={[styles.paymentForm, { borderTopColor: theme.backgroundSelected }]}>
-          <ThemedText type="small" themeColor="textSecondary">
-            Register a payment
-          </ThemedText>
-          <TextField label="Amount" value={paymentAmount} onChangeText={setPaymentAmount} keyboardType="decimal-pad" />
-          <TextField label="Paid on" value={paymentDate} onChangeText={setPaymentDate} placeholder="YYYY-MM-DD" autoCapitalize="none" />
-          <TextField
-            label="Source"
-            value={paymentSource}
-            onChangeText={setPaymentSource}
-            placeholder="e.g. Card autopay"
-          />
-          <PrimaryButton
-            label="Register payment"
-            variant="secondary"
-            loading={registeringPayment}
-            onPress={handleRegisterPayment}
-          />
+                {error ? (
+                  <ThemedText type="small" style={{ color: theme.danger }}>
+                    {error}
+                  </ThemedText>
+                ) : null}
+
+                <PrimaryButton label="Save changes" loading={saving} onPress={handleSave} />
+                <PrimaryButton label="Cancel" variant="secondary" onPress={() => setEditing(false)} />
+                <PrimaryButton label="Delete plan" variant="secondary" loading={removing} onPress={handleDelete} />
+              </>
+            )}
+
+            {!isComplete ? (
+              <View style={[styles.paymentForm, { borderTopColor: theme.backgroundSelected }]}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Register a payment
+                </ThemedText>
+                <TextField label="Amount" value={paymentAmount} onChangeText={setPaymentAmount} keyboardType="decimal-pad" />
+                <TextField
+                  label="Paid on"
+                  value={paymentDate}
+                  onChangeText={setPaymentDate}
+                  placeholder="YYYY-MM-DD"
+                  autoCapitalize="none"
+                />
+                <TextField
+                  label="Source"
+                  value={paymentSource}
+                  onChangeText={setPaymentSource}
+                  placeholder="e.g. Card autopay"
+                />
+                <PrimaryButton
+                  label="Register payment"
+                  variant="secondary"
+                  loading={registeringPayment}
+                  onPress={handleRegisterPayment}
+                />
+              </View>
+            ) : null}
+          </ScrollView>
         </View>
-      ) : null}
-    </Panel>
+      </View>
+    </Modal>
   );
 }
 
@@ -463,5 +577,40 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingTop: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  rowEmoji: {
+    fontSize: 20,
+  },
+  rowMain: {
+    flex: 1,
+    gap: 2,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderWidth: 1,
+    maxHeight: '85%',
+  },
+  modalContent: {
+    padding: 20,
+    gap: 12,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
   },
 });

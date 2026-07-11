@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { Panel, RowItem } from '@/components/finance/cards';
 import { ScreenShell } from '@/components/finance/screen-shell';
 import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/hooks/use-theme';
-import { api, BudgetStatus, NotificationRead, TransactionRead } from '@/lib/api';
+import { api, BudgetStatus, MSIPlanRead, NotificationRead, TransactionRead } from '@/lib/api';
 import { money, shortDate } from '@/lib/format';
 import { getMerchantEmoji } from '@/lib/merchant-icons';
 
@@ -16,6 +16,8 @@ import { getMerchantEmoji } from '@/lib/merchant-icons';
 const CHART_COLORS = { income: '#3C87F7', expense: '#C2433B' } as const;
 const CHART_MONTHS = 6;
 const BAR_MAX_HEIGHT = 90;
+const RECENT_TRANSACTIONS_COUNT = 3;
+const MASKED_AMOUNT = '••••••';
 
 type MonthBucket = { key: string; label: string; income: number; expense: number };
 
@@ -27,23 +29,27 @@ export default function DashboardScreen() {
   const [transactions, setTransactions] = useState<TransactionRead[]>([]);
   const [budgets, setBudgets] = useState<BudgetStatus[]>([]);
   const [notifications, setNotifications] = useState<NotificationRead[]>([]);
+  const [msiPlans, setMsiPlans] = useState<MSIPlanRead[]>([]);
+  const [hideAmounts, setHideAmounts] = useState(false);
 
   useEffect(() => {
     let mounted = true;
 
     async function load() {
       try {
-        const [health, txRows, budgetRows, notificationRows] = await Promise.all([
+        const [health, txRows, budgetRows, notificationRows, msiRows] = await Promise.all([
           api.health(),
           api.listTransactions(),
           api.listBudgetStatus(),
           api.listNotifications(),
+          api.listMSIPlans(),
         ]);
         if (!mounted) return;
         setHealthStatus(health.status);
         setTransactions(txRows);
         setBudgets(budgetRows);
         setNotifications(notificationRows);
+        setMsiPlans(msiRows);
       } catch (err) {
         if (mounted) {
           setError(err instanceof Error ? err.message : 'Failed to load dashboard');
@@ -60,6 +66,10 @@ export default function DashboardScreen() {
     };
   }, []);
 
+  function maskedMoney(value: number | string): string {
+    return hideAmounts ? MASKED_AMOUNT : money(value);
+  }
+
   const totals = useMemo(() => {
     return transactions.reduce(
       (acc, tx) => {
@@ -75,7 +85,13 @@ export default function DashboardScreen() {
   const monthlyTotals = useMemo(() => buildMonthlyTotals(transactions), [transactions]);
 
   // The backend already returns transactions ordered by occurred_at desc.
-  const latestTransaction = transactions[0] ?? null;
+  const recentTransactions = transactions.slice(0, RECENT_TRANSACTIONS_COUNT);
+
+  const msiMonthlyTotal = useMemo(() => {
+    return msiPlans
+      .filter((plan) => plan.payments_done < plan.months_total)
+      .reduce((sum, plan) => sum + Number(plan.monthly_payment), 0);
+  }, [msiPlans]);
 
   const budgetOverruns = budgets.filter((b) => b.is_over_limit).length;
 
@@ -84,34 +100,38 @@ export default function DashboardScreen() {
       title="Budgiette"
       subtitle="Personal finance cockpit for transactions, budgets, MSI and alerts.">
       <Panel title="Overview" caption="Live totals from your current transaction feed">
-        <RowItem label="Income" value={money(totals.income)} />
-        <RowItem label="Expenses" value={money(totals.expense)} danger={totals.expense > totals.income} />
-        <RowItem label="Net" value={money(totals.income - totals.expense)} danger={totals.expense > totals.income} />
+        <Pressable onPress={() => setHideAmounts((value) => !value)} style={styles.hideToggle}>
+          <ThemedText type="small" themeColor="tint">
+            {hideAmounts ? '🙈 Show amounts' : '👁️ Hide amounts'}
+          </ThemedText>
+        </Pressable>
+        <RowItem label="Income" value={maskedMoney(totals.income)} />
+        <RowItem label="Expenses" value={maskedMoney(totals.expense)} danger={totals.expense > totals.income} />
+        <RowItem label="Net" value={maskedMoney(totals.income - totals.expense)} danger={totals.expense > totals.income} />
+        <RowItem label="MSI monthly" value={maskedMoney(msiMonthlyTotal)} />
       </Panel>
 
       <Panel title="Monthly income vs expense" caption={`Last ${CHART_MONTHS} months`}>
         <MonthlyChart months={monthlyTotals} />
       </Panel>
 
-      {latestTransaction ? (
-        <Panel title="Latest transaction" caption={shortDate(latestTransaction.occurred_at)}>
-          <View style={styles.latestRow}>
-            <ThemedText style={styles.latestEmoji}>
-              {getMerchantEmoji(latestTransaction.merchant_name, latestTransaction.description)}
-            </ThemedText>
-            <View style={styles.latestMain}>
-              <ThemedText numberOfLines={1}>{latestTransaction.merchant_name}</ThemedText>
-              {latestTransaction.description ? (
+      {recentTransactions.length > 0 ? (
+        <Panel title="Recent transactions" caption={`Last ${recentTransactions.length}`}>
+          {recentTransactions.map((tx) => (
+            <View key={tx.id} style={styles.latestRow}>
+              <ThemedText style={styles.latestEmoji}>{getMerchantEmoji(tx.merchant_name, tx.description)}</ThemedText>
+              <View style={styles.latestMain}>
+                <ThemedText numberOfLines={1}>{tx.merchant_name}</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-                  {latestTransaction.description}
+                  {shortDate(tx.occurred_at)}
                 </ThemedText>
-              ) : null}
+              </View>
+              <ThemedText style={{ color: tx.direction === 'expense' ? theme.danger : theme.text }}>
+                {tx.direction === 'expense' ? '-' : '+'}
+                {maskedMoney(tx.amount)}
+              </ThemedText>
             </View>
-            <ThemedText style={{ color: latestTransaction.direction === 'expense' ? theme.danger : theme.text }}>
-              {latestTransaction.direction === 'expense' ? '-' : '+'}
-              {money(latestTransaction.amount)}
-            </ThemedText>
-          </View>
+          ))}
         </Panel>
       ) : null}
 
@@ -225,6 +245,10 @@ function LegendSwatch({ color, label }: { color: string; label: string }) {
 const styles = StyleSheet.create({
   error: {
     color: '#C2433B',
+  },
+  hideToggle: {
+    alignSelf: 'flex-end',
+    paddingBottom: 6,
   },
   tipBox: {
     paddingBottom: 22,
