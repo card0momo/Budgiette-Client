@@ -72,3 +72,9 @@ export const MaxContentWidth = 800;
 
 /** Below this viewport width, the web tab bar switches to a bottom, icon-first layout. */
 export const NarrowBreakpoint = 600;
+
+/** At or above this viewport width, screen content splits into two centered columns. */
+export const WideColumnBreakpoint = 900;
+
+/** Fraction of viewport width the centered two-column layout occupies. */
+export const WideColumnWidthFraction = '80%';

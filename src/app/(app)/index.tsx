@@ -4,9 +4,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Panel, RowItem } from '@/components/finance/cards';
 import { ScreenShell } from '@/components/finance/screen-shell';
 import { ThemedText } from '@/components/themed-text';
-import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
-import { APP_ENV } from '@/lib/config';
 import { api, BudgetStatus, NotificationRead, TransactionRead } from '@/lib/api';
 import { money, shortDate } from '@/lib/format';
 import { getMerchantEmoji } from '@/lib/merchant-icons';
@@ -23,7 +21,6 @@ type MonthBucket = { key: string; label: string; income: number; expense: number
 
 export default function DashboardScreen() {
   const theme = useTheme();
-  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [healthStatus, setHealthStatus] = useState('unknown');
@@ -86,12 +83,6 @@ export default function DashboardScreen() {
     <ScreenShell
       title="Budgiette"
       subtitle="Personal finance cockpit for transactions, budgets, MSI and alerts.">
-      <Panel title="Connection" caption="Backend and user context">
-        <RowItem label="API" value={APP_ENV.apiBaseUrl} />
-        <RowItem label="Signed in as" value={user?.username ?? '—'} />
-        <RowItem label="Health" value={healthStatus} danger={healthStatus !== 'ok'} />
-      </Panel>
-
       <Panel title="Overview" caption="Live totals from your current transaction feed">
         <RowItem label="Income" value={money(totals.income)} />
         <RowItem label="Expenses" value={money(totals.expense)} danger={totals.expense > totals.income} />

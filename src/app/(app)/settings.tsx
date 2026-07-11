@@ -159,7 +159,7 @@ function NotificationsPanel() {
   }
 
   return (
-    <Panel title="Notifications" caption="Choose which alerts you want to receive" collapsible>
+    <Panel title="Notifications" caption="Choose which alerts you want to receive" collapsible defaultOpen={false}>
       {loading ? <ActivityIndicator color={theme.text} /> : null}
       {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
 

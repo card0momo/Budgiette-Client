@@ -14,6 +14,8 @@ import { getMerchantEmoji } from '@/lib/merchant-icons';
 type CategoryFilter = 'all' | 'uncategorized' | number;
 type DateFilter = 'all' | 'month' | '30d';
 
+const PAGE_SIZE = 25;
+
 export default function TransactionsScreen() {
   const theme = useTheme();
   const [items, setItems] = useState<TransactionRead[]>([]);
@@ -26,6 +28,7 @@ export default function TransactionsScreen() {
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<TransactionRead | null>(null);
+  const [page, setPage] = useState(1);
 
   async function loadAll() {
     try {
@@ -70,6 +73,17 @@ export default function TransactionsScreen() {
     });
   }, [items, directionFilter, categoryFilter, dateFilter, search]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [directionFilter, categoryFilter, dateFilter, search]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const pagedItems = useMemo(
+    () => filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [filtered, currentPage]
+  );
+
   const totals = useMemo(() => {
     return filtered.reduce(
       (acc, tx) => {
@@ -93,12 +107,12 @@ export default function TransactionsScreen() {
 
   return (
     <ScreenShell title="Transactions" subtitle="Income and expense feed parsed from your banking alerts.">
-      <Panel title="Totals" caption="Matches the filters below" collapsible>
+      <Panel title="Totals" caption="Matches the filters below" collapsible defaultOpen={false}>
         <RowItem label="Income" value={money(totals.income)} />
         <RowItem label="Expenses" value={money(totals.expenses)} />
       </Panel>
 
-      <Panel title="Filters" caption="Narrow down the feed" collapsible>
+      <Panel title="Filters" caption="Narrow down the feed" collapsible defaultOpen={false}>
         <TextField label="Search" value={search} onChangeText={setSearch} placeholder="Merchant or description" />
 
         <ThemedText type="small" themeColor="textSecondary">
@@ -136,7 +150,7 @@ export default function TransactionsScreen() {
       {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
 
       <Panel title="Transactions" caption={`${filtered.length} of ${items.length}`}>
-        {filtered.map((tx) => (
+        {pagedItems.map((tx) => (
           <TransactionRow
             key={tx.id}
             transaction={tx}
@@ -150,6 +164,25 @@ export default function TransactionsScreen() {
               ? 'No transactions yet. Once IMAP parsing starts, this feed will auto-populate.'
               : 'No transactions match these filters.'}
           </ThemedText>
+        ) : null}
+        {pageCount > 1 ? (
+          <View style={styles.pagerRow}>
+            <PrimaryButton
+              label="Previous"
+              variant="secondary"
+              disabled={currentPage <= 1}
+              onPress={() => setPage((p) => Math.max(1, p - 1))}
+            />
+            <ThemedText type="small" themeColor="textSecondary">
+              Page {currentPage} of {pageCount}
+            </ThemedText>
+            <PrimaryButton
+              label="Next"
+              variant="secondary"
+              disabled={currentPage >= pageCount}
+              onPress={() => setPage((p) => Math.min(pageCount, p + 1))}
+            />
+          </View>
         ) : null}
       </Panel>
 
@@ -433,6 +466,13 @@ function TransactionDetailModal({
 const styles = StyleSheet.create({
   error: {
     color: '#C2433B',
+  },
+  pagerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 8,
   },
   chipRow: {
     flexDirection: 'row',
