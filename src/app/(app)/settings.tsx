@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Switch } from 'react-native-paper';
 
 import { PrimaryButton } from '@/components/auth/primary-button';
 import { TextField } from '@/components/auth/text-field';
@@ -18,7 +19,6 @@ type RegistrationResult = PushRegistrationResult | WebPushRegistrationResult;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default function SettingsScreen() {
-  const theme = useTheme();
   const { user, logout } = useAuth();
   const [mailboxes, setMailboxes] = useState<MailboxRead[]>([]);
   const [banks, setBanks] = useState<BankInfo[]>([]);
@@ -26,6 +26,9 @@ export default function SettingsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [selectedAccount, setSelectedAccount] = useState<AccountRead | null>(null);
+  const [addMailboxOpen, setAddMailboxOpen] = useState(false);
+  const [selectedMailboxId, setSelectedMailboxId] = useState<number | null>(null);
 
   async function loadAll() {
     try {
@@ -58,8 +61,10 @@ export default function SettingsScreen() {
     }
   }
 
+  const selectedMailbox = mailboxes.find((mailbox) => mailbox.id === selectedMailboxId) ?? null;
+
   return (
-    <ScreenShell title="Settings" subtitle="Account and runtime configuration.">
+    <ScreenShell title="Settings">
       <Panel title="Account" caption="Signed in with Budgiette">
         <RowItem label="Username" value={user?.username ?? '—'} />
         <RowItem label="Email" value={user?.email || '—'} />
@@ -71,13 +76,19 @@ export default function SettingsScreen() {
       <Panel
         title="Email server"
         caption="Connect a mailbox so bank alert emails become transactions automatically">
-        {loading ? <ActivityIndicator color={theme.text} /> : null}
+        {loading ? <ActivityIndicator /> : null}
         {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
 
-        {!loading && mailboxes.length === 0 ? <MailboxForm banks={banks} onCreated={loadAll} /> : null}
+        {!loading && mailboxes.length === 0 ? (
+          <Pressable onPress={() => setAddMailboxOpen(true)} style={styles.addLink}>
+            <ThemedText type="link" themeColor="tint">
+              + Add email server
+            </ThemedText>
+          </Pressable>
+        ) : null}
 
         {mailboxes.map((mailbox) => (
-          <MailboxCard key={mailbox.id} mailbox={mailbox} banks={banks} onChanged={loadAll} />
+          <MailboxRow key={mailbox.id} mailbox={mailbox} onPress={() => setSelectedMailboxId(mailbox.id)} />
         ))}
       </Panel>
 
@@ -88,17 +99,51 @@ export default function SettingsScreen() {
           </ThemedText>
         ) : null}
         {accounts.map((account) => (
-          <AccountCard key={account.id} account={account} onChanged={loadAll} />
+          <AccountRow key={account.id} account={account} onPress={() => setSelectedAccount(account)} />
         ))}
       </Panel>
 
       <NotificationsPanel />
+
+      {addMailboxOpen ? (
+        <AddMailboxModal
+          banks={banks}
+          onClose={() => setAddMailboxOpen(false)}
+          onCreated={() => {
+            loadAll();
+            setAddMailboxOpen(false);
+          }}
+        />
+      ) : null}
+
+      {selectedMailbox ? (
+        <MailboxDetailModal
+          mailbox={selectedMailbox}
+          banks={banks}
+          onClose={() => setSelectedMailboxId(null)}
+          onChanged={loadAll}
+          onRemoved={() => {
+            loadAll();
+            setSelectedMailboxId(null);
+          }}
+        />
+      ) : null}
+
+      {selectedAccount ? (
+        <AccountDetailModal
+          account={selectedAccount}
+          onClose={() => setSelectedAccount(null)}
+          onChanged={() => {
+            loadAll();
+            setSelectedAccount(null);
+          }}
+        />
+      ) : null}
     </ScreenShell>
   );
 }
 
 function NotificationsPanel() {
-  const theme = useTheme();
   const [prefs, setPrefs] = useState<NotificationPreferenceRead | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -160,7 +205,7 @@ function NotificationsPanel() {
 
   return (
     <Panel title="Notifications" caption="Choose which alerts you want to receive" collapsible defaultOpen={false}>
-      {loading ? <ActivityIndicator color={theme.text} /> : null}
+      {loading ? <ActivityIndicator /> : null}
       {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
 
       {prefs ? (
@@ -310,7 +355,7 @@ function MailboxForm({ banks, onCreated }: { banks: BankInfo[]; onCreated: () =>
   }
 
   return (
-    <Panel title="Add your email server" caption="IMAP credentials are encrypted at rest">
+    <View style={styles.form}>
       <TextField
         label="Email address"
         value={emailAddress}
@@ -367,25 +412,87 @@ function MailboxForm({ banks, onCreated }: { banks: BankInfo[]; onCreated: () =>
         </ThemedText>
       ) : null}
       <PrimaryButton label="Save email server" loading={submitting} onPress={handleSubmit} />
-    </Panel>
+    </View>
   );
 }
 
-function MailboxCard({
+function AddMailboxModal({
+  banks,
+  onClose,
+  onCreated,
+}: {
+  banks: BankInfo[];
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const theme = useTheme();
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <View style={[styles.modalCard, { backgroundColor: theme.background, borderColor: theme.backgroundSelected }]}>
+          <ScrollView contentContainerStyle={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <ThemedText type="subtitle">Add email server</ThemedText>
+              <Pressable onPress={onClose}>
+                <ThemedText type="link" themeColor="tint">
+                  Close
+                </ThemedText>
+              </Pressable>
+            </View>
+            <ThemedText type="small" themeColor="textSecondary">
+              IMAP credentials are encrypted at rest
+            </ThemedText>
+            <MailboxForm banks={banks} onCreated={onCreated} />
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function MailboxRow({ mailbox, onPress }: { mailbox: MailboxRead; onPress: () => void }) {
+  const theme = useTheme();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.accountRow, { borderColor: theme.backgroundSelected, opacity: pressed ? 0.7 : 1 }]}>
+      <View style={styles.accountMain}>
+        <ThemedText numberOfLines={1}>{mailbox.email_address}</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+          {mailbox.host}:{mailbox.port} · {mailbox.is_active ? 'Active' : 'Paused'}
+        </ThemedText>
+      </View>
+    </Pressable>
+  );
+}
+
+function MailboxDetailModal({
   mailbox,
   banks,
+  onClose,
   onChanged,
+  onRemoved,
 }: {
   mailbox: MailboxRead;
   banks: BankInfo[];
+  onClose: () => void;
   onChanged: () => void;
+  onRemoved: () => void;
 }) {
   const theme = useTheme();
+  const [editing, setEditing] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [busyBankKey, setBusyBankKey] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const enabledBankNames = banks
+    .filter((bank) => mailbox.enabled_banks.includes(bank.key))
+    .map((bank) => bank.display_name)
+    .join(', ');
 
   async function toggleBank(key: string) {
     const nextBanks = mailbox.enabled_banks.includes(key)
@@ -433,7 +540,7 @@ function MailboxCard({
     setError(null);
     try {
       await api.deleteMailbox(mailbox.id);
-      onChanged();
+      onRemoved();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not remove mailbox.');
       setRemoving(false);
@@ -441,57 +548,116 @@ function MailboxCard({
   }
 
   return (
-    <Panel title={mailbox.email_address} caption={`${mailbox.use_ssl ? 'IMAPS' : 'IMAP'} · ${mailbox.host}:${mailbox.port}`}>
-      <RowItem label="Active" value={mailbox.is_active ? 'Yes' : 'No'} />
-      <RowItem label="Backfill start" value={mailbox.sync_start_date} />
-      <RowItem label="Last synced" value={mailbox.last_synced_at ? shortDate(mailbox.last_synced_at) : 'Never'} />
-      {mailbox.last_sync_error ? <RowItem label="Last error" value={mailbox.last_sync_error} danger /> : null}
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <View style={[styles.modalCard, { backgroundColor: theme.background, borderColor: theme.backgroundSelected }]}>
+          <ScrollView contentContainerStyle={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <ThemedText type="subtitle">{mailbox.email_address}</ThemedText>
+              <Pressable onPress={onClose}>
+                <ThemedText type="link" themeColor="tint">
+                  Close
+                </ThemedText>
+              </Pressable>
+            </View>
 
-      <ThemedText type="small" themeColor="textSecondary">
-        Banks to watch
-      </ThemedText>
-      {banks.map((bank) => (
-        <BankToggleRow
-          key={bank.key}
-          bank={bank}
-          selected={mailbox.enabled_banks.includes(bank.key)}
-          onPress={() => toggleBank(bank.key)}
-          disabled={busyBankKey === bank.key}
-        />
-      ))}
+            <RowItem label="Active" value={mailbox.is_active ? 'Yes' : 'No'} />
+            <RowItem label="Host" value={`${mailbox.use_ssl ? 'IMAPS' : 'IMAP'} · ${mailbox.host}:${mailbox.port}`} />
+            <RowItem label="Backfill start" value={mailbox.sync_start_date} />
+            <RowItem label="Last synced" value={mailbox.last_synced_at ? shortDate(mailbox.last_synced_at) : 'Never'} />
+            {mailbox.last_sync_error ? <RowItem label="Last error" value={mailbox.last_sync_error} danger /> : null}
+            <RowItem label="Banks" value={enabledBankNames || 'None selected'} />
 
-      {syncMessage ? (
-        <ThemedText type="small" themeColor="textSecondary">
-          {syncMessage}
-        </ThemedText>
-      ) : null}
-      {error ? (
-        <ThemedText type="small" style={{ color: theme.danger }}>
-          {error}
-        </ThemedText>
-      ) : null}
+            {syncMessage ? (
+              <ThemedText type="small" themeColor="textSecondary">
+                {syncMessage}
+              </ThemedText>
+            ) : null}
+            {error ? (
+              <ThemedText type="small" style={{ color: theme.danger }}>
+                {error}
+              </ThemedText>
+            ) : null}
 
-      <PrimaryButton label="Sync now" loading={syncing} onPress={handleSync} />
-      <PrimaryButton
-        label={mailbox.is_active ? 'Pause syncing' : 'Resume syncing'}
-        variant="secondary"
-        onPress={toggleActive}
-      />
-      <PrimaryButton label="Remove mailbox" variant="secondary" loading={removing} onPress={handleRemove} />
-    </Panel>
+            <PrimaryButton label="Sync now" variant="secondary" loading={syncing} onPress={handleSync} />
+
+            {!editing ? (
+              <PrimaryButton label="Edit" variant="secondary" onPress={() => setEditing(true)} />
+            ) : (
+              <>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Banks to watch
+                </ThemedText>
+                {banks.map((bank) => (
+                  <BankToggleRow
+                    key={bank.key}
+                    bank={bank}
+                    selected={mailbox.enabled_banks.includes(bank.key)}
+                    onPress={() => toggleBank(bank.key)}
+                    disabled={busyBankKey === bank.key}
+                  />
+                ))}
+
+                <PrimaryButton
+                  label={mailbox.is_active ? 'Pause syncing' : 'Resume syncing'}
+                  variant="secondary"
+                  onPress={toggleActive}
+                />
+                <PrimaryButton label="Remove mailbox" variant="secondary" loading={removing} onPress={handleRemove} />
+                <PrimaryButton label="Done" variant="secondary" onPress={() => setEditing(false)} />
+              </>
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
-function AccountCard({ account, onChanged }: { account: AccountRead; onChanged: () => void }) {
+function AccountRow({ account, onPress }: { account: AccountRead; onPress: () => void }) {
   const theme = useTheme();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.accountRow, { borderColor: theme.backgroundSelected, opacity: pressed ? 0.7 : 1 }]}>
+      <View style={styles.accountMain}>
+        <ThemedText numberOfLines={1}>{account.nickname || account.display_name}</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+          {account.display_name}
+          {account.account_number ? ` · ${account.account_number}` : ''}
+        </ThemedText>
+      </View>
+    </Pressable>
+  );
+}
+
+function AccountDetailModal({
+  account,
+  onClose,
+  onChanged,
+}: {
+  account: AccountRead;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const theme = useTheme();
+  const [editing, setEditing] = useState(false);
   const [nickname, setNickname] = useState(account.nickname ?? '');
   const [accountNumber, setAccountNumber] = useState(account.account_number ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSave() {
-    setSaving(true);
+  function handleStartEditing() {
+    setNickname(account.nickname ?? '');
+    setAccountNumber(account.account_number ?? '');
     setError(null);
+    setEditing(true);
+  }
+
+  async function handleSave() {
+    setError(null);
+    setSaving(true);
     try {
       await api.updateAccount(account.id, {
         nickname: nickname.trim() || null,
@@ -506,27 +672,70 @@ function AccountCard({ account, onChanged }: { account: AccountRead; onChanged: 
   }
 
   return (
-    <Panel title={account.nickname || account.display_name} caption={account.display_name}>
-      <TextField label="Nickname" value={nickname} onChangeText={setNickname} placeholder={account.display_name} />
-      <TextField
-        label="Account number"
-        value={accountNumber}
-        onChangeText={setAccountNumber}
-        placeholder="Last 4 digits"
-      />
-      {error ? (
-        <ThemedText type="small" style={{ color: theme.danger }}>
-          {error}
-        </ThemedText>
-      ) : null}
-      <PrimaryButton label="Save" loading={saving} onPress={handleSave} />
-    </Panel>
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <View style={[styles.modalCard, { backgroundColor: theme.background, borderColor: theme.backgroundSelected }]}>
+          <ScrollView contentContainerStyle={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <ThemedText type="subtitle">{account.nickname || account.display_name}</ThemedText>
+              <Pressable onPress={onClose}>
+                <ThemedText type="link" themeColor="tint">
+                  Close
+                </ThemedText>
+              </Pressable>
+            </View>
+
+            {!editing ? (
+              <>
+                <RowItem label="Bank" value={account.display_name} />
+                <RowItem label="Nickname" value={account.nickname || '—'} />
+                <RowItem label="Account number" value={account.account_number || '—'} />
+
+                {error ? (
+                  <ThemedText type="small" style={{ color: theme.danger }}>
+                    {error}
+                  </ThemedText>
+                ) : null}
+
+                <PrimaryButton label="Edit" variant="secondary" onPress={handleStartEditing} />
+              </>
+            ) : (
+              <>
+                <TextField label="Nickname" value={nickname} onChangeText={setNickname} placeholder={account.display_name} />
+                <TextField
+                  label="Account number"
+                  value={accountNumber}
+                  onChangeText={setAccountNumber}
+                  placeholder="Last 4 digits"
+                />
+
+                {error ? (
+                  <ThemedText type="small" style={{ color: theme.danger }}>
+                    {error}
+                  </ThemedText>
+                ) : null}
+
+                <PrimaryButton label="Save changes" loading={saving} onPress={handleSave} />
+                <PrimaryButton label="Cancel" variant="secondary" onPress={() => setEditing(false)} />
+              </>
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   error: {
     color: '#C2433B',
+  },
+  form: {
+    gap: 10,
+  },
+  addLink: {
+    alignSelf: 'flex-start',
+    marginBottom: 2,
   },
   switchRow: {
     flexDirection: 'row',
@@ -538,5 +747,36 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 14,
+  },
+  accountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  accountMain: {
+    flex: 1,
+    gap: 2,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderWidth: 1,
+    maxHeight: '85%',
+  },
+  modalContent: {
+    padding: 20,
+    gap: 12,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
   },
 });
