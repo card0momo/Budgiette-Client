@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/auth/primary-button';
 import { TextField } from '@/components/auth/text-field';
 import { Chip, MenuField, Panel, RowItem } from '@/components/finance/cards';
 import { ScreenShell } from '@/components/finance/screen-shell';
 import { ThemedText } from '@/components/themed-text';
-import { useIsWideScreen } from '@/hooks/use-is-wide-screen';
 import { useTheme } from '@/hooks/use-theme';
 import { api, CategoryRead, TransactionDirection, TransactionRead } from '@/lib/api';
 import { money, shortDate } from '@/lib/format';
@@ -19,8 +18,6 @@ const PAGE_SIZE = 25;
 
 export default function TransactionsScreen() {
   const theme = useTheme();
-  const isWide = useIsWideScreen();
-  const showGrid = Platform.OS === 'web' && isWide;
   const [items, setItems] = useState<TransactionRead[]>([]);
   const [categories, setCategories] = useState<CategoryRead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -153,18 +150,14 @@ export default function TransactionsScreen() {
       {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
 
       <Panel title="Transactions" caption={`${filtered.length} of ${items.length}`}>
-        <View style={showGrid ? styles.transactionGrid : undefined}>
-          {pagedItems.map((tx) => (
-            <View key={tx.id} style={showGrid ? styles.transactionGridItem : undefined}>
-              <TransactionRow
-                transaction={tx}
-                category={tx.category_id != null ? categoryById.get(tx.category_id) : undefined}
-                onPress={() => setSelected(tx)}
-                grid={showGrid}
-              />
-            </View>
-          ))}
-        </View>
+        {pagedItems.map((tx) => (
+          <TransactionRow
+            key={tx.id}
+            transaction={tx}
+            category={tx.category_id != null ? categoryById.get(tx.category_id) : undefined}
+            onPress={() => setSelected(tx)}
+          />
+        ))}
         {!loading && filtered.length === 0 ? (
           <ThemedText themeColor="textSecondary">
             {items.length === 0
@@ -210,12 +203,10 @@ function TransactionRow({
   transaction,
   category,
   onPress,
-  grid = false,
 }: {
   transaction: TransactionRead;
   category?: CategoryRead;
   onPress: () => void;
-  grid?: boolean;
 }) {
   const theme = useTheme();
   const emoji = getMerchantEmoji(transaction.merchant_name, transaction.description);
@@ -224,10 +215,7 @@ function TransactionRow({
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [
-        grid ? styles.rowGrid : styles.row,
-        { borderColor: theme.backgroundSelected, opacity: pressed ? 0.7 : 1 },
-      ]}>
+      style={({ pressed }) => [styles.row, { borderColor: theme.backgroundSelected, opacity: pressed ? 0.7 : 1 }]}>
       <ThemedText style={styles.rowEmoji}>{emoji}</ThemedText>
       <View style={styles.rowMain}>
         <ThemedText numberOfLines={1}>{transaction.merchant_name}</ThemedText>
@@ -418,22 +406,6 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  rowGrid: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    padding: 10,
-    borderWidth: 1,
-    borderRadius: 10,
-  },
-  transactionGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  transactionGridItem: {
-    width: '50%',
   },
   rowEmoji: {
     fontSize: 20,
