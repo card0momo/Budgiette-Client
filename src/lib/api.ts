@@ -369,6 +369,7 @@ export const api = {
     request<MSIPlanRead>(`/msi/plans/${planId}`, { method: 'PATCH', body: payload }),
   deleteMSIPlan: (planId: number) => request<void>(`/msi/plans/${planId}`, { method: 'DELETE' }),
   listMSIPayments: (planId: number) => request<MSIPaymentRead[]>(`/msi/plans/${planId}/payments`),
+  listAllMSIPayments: () => request<MSIPaymentRead[]>('/msi/payments'),
   registerMSIPayment: (planId: number, payload: MSIPaymentCreate) =>
     request<MSIPaymentRead>(`/msi/plans/${planId}/payments`, { method: 'POST', body: payload }),
   listCards: () => request<CardRead[]>('/cards'),

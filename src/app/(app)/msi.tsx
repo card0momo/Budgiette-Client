@@ -6,14 +6,18 @@ import { TextField } from '@/components/auth/text-field';
 import { MenuField, Panel, RowItem } from '@/components/finance/cards';
 import { ScreenShell } from '@/components/finance/screen-shell';
 import { ThemedText } from '@/components/themed-text';
+import { useIsWideScreen } from '@/hooks/use-is-wide-screen';
 import { useTheme } from '@/hooks/use-theme';
-import { api, CardRead, MSIPlanRead } from '@/lib/api';
+import { api, CardRead, MSIPaymentRead, MSIPlanRead } from '@/lib/api';
 import { money, shortDate } from '@/lib/format';
 import { getMerchantEmoji } from '@/lib/merchant-icons';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const RECENT_PAYMENTS_COUNT = 3;
 
 type CardOption = { value: number | null; label: string };
+type PaymentFilters = { search: string; cardId: number | 'all'; from: string; to: string };
+const EMPTY_PAYMENT_FILTERS: PaymentFilters = { search: '', cardId: 'all', from: '', to: '' };
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -21,17 +25,29 @@ function todayIso(): string {
 
 export default function MSIScreen() {
   const theme = useTheme();
+  const isWide = useIsWideScreen();
   const [plans, setPlans] = useState<MSIPlanRead[]>([]);
   const [cards, setCards] = useState<CardRead[]>([]);
+  const [payments, setPayments] = useState<MSIPaymentRead[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<MSIPlanRead | null>(null);
 
+  const [paymentFilters, setPaymentFilters] = useState<PaymentFilters>(EMPTY_PAYMENT_FILTERS);
+  const [paymentsExpanded, setPaymentsExpanded] = useState(false);
+  const [allPaymentsOpen, setAllPaymentsOpen] = useState(false);
+  const [filtersModalOpen, setFiltersModalOpen] = useState(false);
+
   async function loadAll() {
     try {
-      const [planRows, cardRows] = await Promise.all([api.listMSIPlans(), api.listCards()]);
+      const [planRows, cardRows, paymentRows] = await Promise.all([
+        api.listMSIPlans(),
+        api.listCards(),
+        api.listAllMSIPayments(),
+      ]);
       setPlans(planRows);
       setCards(cardRows);
+      setPayments(paymentRows);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load MSI plans');
@@ -45,10 +61,59 @@ export default function MSIScreen() {
   }, []);
 
   const cardById = new Map(cards.map((card) => [card.id, card]));
+  const planById = new Map(plans.map((plan) => [plan.id, plan]));
   const cardOptions: CardOption[] = [
     { value: null, label: 'No card' },
     ...cards.map((card) => ({ value: card.id, label: `${card.nickname} ·${card.last4}` })),
   ];
+  const filterCardOptions: { value: number | 'all'; label: string }[] = [
+    { value: 'all', label: 'All cards' },
+    ...cards.map((card) => ({ value: card.id, label: `${card.nickname} ·${card.last4}` })),
+  ];
+
+  const hasActiveFilters =
+    paymentFilters.search.trim() !== '' ||
+    paymentFilters.cardId !== 'all' ||
+    paymentFilters.from !== '' ||
+    paymentFilters.to !== '';
+
+  const filteredPayments = payments.filter((payment) => {
+    const plan = planById.get(payment.msi_plan_id);
+    if (paymentFilters.search.trim()) {
+      const query = paymentFilters.search.trim().toLowerCase();
+      if (!plan || !plan.purchase_name.toLowerCase().includes(query)) return false;
+    }
+    if (paymentFilters.cardId !== 'all' && plan?.card_id !== paymentFilters.cardId) return false;
+    if (paymentFilters.from && payment.paid_on < paymentFilters.from) return false;
+    if (paymentFilters.to && payment.paid_on > paymentFilters.to) return false;
+    return true;
+  });
+  const visiblePayments =
+    isWide && paymentsExpanded ? filteredPayments : filteredPayments.slice(0, RECENT_PAYMENTS_COUNT);
+
+  function handleExpandPress() {
+    if (isWide) {
+      setPaymentsExpanded((value) => !value);
+    } else {
+      setAllPaymentsOpen(true);
+    }
+  }
+
+  function handleApplyFilters(next: PaymentFilters) {
+    setPaymentFilters(next);
+    if (isWide) setPaymentsExpanded(true);
+    setFiltersModalOpen(false);
+  }
+
+  function handleClearFilters() {
+    setPaymentFilters(EMPTY_PAYMENT_FILTERS);
+    setFiltersModalOpen(false);
+  }
+
+  function cardForPayment(payment: MSIPaymentRead): CardRead | undefined {
+    const plan = planById.get(payment.msi_plan_id);
+    return plan?.card_id != null ? cardById.get(plan.card_id) : undefined;
+  }
 
   return (
     <ScreenShell title="MSI Plans" subtitle="Meses sin intereses tracker with remaining balance and progress.">
@@ -83,6 +148,57 @@ export default function MSIScreen() {
           </ThemedText>
         ) : null}
       </Panel>
+
+      <Panel title="Payments Done" caption={`${payments.length} payment(s) recorded`}>
+        <View style={styles.paymentsHeader}>
+          <Pressable onPress={handleExpandPress}>
+            <ThemedText type="link" themeColor="tint">
+              {isWide && paymentsExpanded ? 'Show recent' : 'Expand all'}
+            </ThemedText>
+          </Pressable>
+          <Pressable onPress={() => setFiltersModalOpen(true)}>
+            <ThemedText type="link" themeColor={hasActiveFilters ? 'tint' : 'textSecondary'}>
+              {hasActiveFilters ? 'Filters ●' : 'Filters'}
+            </ThemedText>
+          </Pressable>
+        </View>
+
+        {visiblePayments.map((payment) => (
+          <PaymentRow
+            key={payment.id}
+            payment={payment}
+            plan={planById.get(payment.msi_plan_id)}
+            card={cardForPayment(payment)}
+          />
+        ))}
+
+        {payments.length === 0 ? (
+          <ThemedText themeColor="textSecondary">No payments registered yet.</ThemedText>
+        ) : filteredPayments.length === 0 ? (
+          <ThemedText themeColor="textSecondary">No payments match these filters.</ThemedText>
+        ) : null}
+      </Panel>
+
+      {allPaymentsOpen ? (
+        <AllPaymentsModal
+          payments={filteredPayments}
+          planById={planById}
+          cardById={cardById}
+          hasActiveFilters={hasActiveFilters}
+          onOpenFilters={() => setFiltersModalOpen(true)}
+          onClose={() => setAllPaymentsOpen(false)}
+        />
+      ) : null}
+
+      {filtersModalOpen ? (
+        <PaymentsFilterModal
+          filters={paymentFilters}
+          cardOptions={filterCardOptions}
+          onApply={handleApplyFilters}
+          onClear={handleClearFilters}
+          onClose={() => setFiltersModalOpen(false)}
+        />
+      ) : null}
 
       {selectedPlan ? (
         <PlanDetailModal
@@ -327,6 +443,159 @@ function PlanRow({
       </View>
       <ThemedText>{money(plan.remaining_balance)}</ThemedText>
     </Pressable>
+  );
+}
+
+function PaymentRow({ payment, plan, card }: { payment: MSIPaymentRead; plan?: MSIPlanRead; card?: CardRead }) {
+  const emoji = getMerchantEmoji(plan?.purchase_name ?? payment.payment_source);
+
+  return (
+    <View style={styles.row}>
+      <ThemedText style={styles.rowEmoji}>{emoji}</ThemedText>
+      <View style={styles.rowMain}>
+        <ThemedText numberOfLines={1}>{plan?.purchase_name ?? payment.payment_source}</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+          {card ? `${card.nickname} · ` : ''}
+          {shortDate(payment.paid_on)}
+        </ThemedText>
+      </View>
+      <ThemedText>{money(payment.amount)}</ThemedText>
+    </View>
+  );
+}
+
+function AllPaymentsModal({
+  payments,
+  planById,
+  cardById,
+  hasActiveFilters,
+  onOpenFilters,
+  onClose,
+}: {
+  payments: MSIPaymentRead[];
+  planById: Map<number, MSIPlanRead>;
+  cardById: Map<number, CardRead>;
+  hasActiveFilters: boolean;
+  onOpenFilters: () => void;
+  onClose: () => void;
+}) {
+  const theme = useTheme();
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <View
+          style={[
+            styles.modalCard,
+            styles.fullModalCard,
+            { backgroundColor: theme.background, borderColor: theme.backgroundSelected },
+          ]}>
+          <ScrollView contentContainerStyle={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <ThemedText type="subtitle">All Payments</ThemedText>
+              <Pressable onPress={onClose}>
+                <ThemedText type="link" themeColor="tint">
+                  Close
+                </ThemedText>
+              </Pressable>
+            </View>
+
+            <Pressable onPress={onOpenFilters}>
+              <ThemedText type="link" themeColor={hasActiveFilters ? 'tint' : 'textSecondary'}>
+                {hasActiveFilters ? 'Filters ●' : 'Filters'}
+              </ThemedText>
+            </Pressable>
+
+            {payments.map((payment) => {
+              const plan = planById.get(payment.msi_plan_id);
+              const card = plan?.card_id != null ? cardById.get(plan.card_id) : undefined;
+              return <PaymentRow key={payment.id} payment={payment} plan={plan} card={card} />;
+            })}
+
+            {payments.length === 0 ? (
+              <ThemedText themeColor="textSecondary">No payments match these filters.</ThemedText>
+            ) : null}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function PaymentsFilterModal({
+  filters,
+  cardOptions,
+  onApply,
+  onClear,
+  onClose,
+}: {
+  filters: PaymentFilters;
+  cardOptions: { value: number | 'all'; label: string }[];
+  onApply: (next: PaymentFilters) => void;
+  onClear: () => void;
+  onClose: () => void;
+}) {
+  const theme = useTheme();
+  const [search, setSearch] = useState(filters.search);
+  const [cardId, setCardId] = useState<number | 'all'>(filters.cardId);
+  const [from, setFrom] = useState(filters.from);
+  const [to, setTo] = useState(filters.to);
+  const [error, setError] = useState<string | null>(null);
+
+  function handleApply() {
+    if ((from && !DATE_RE.test(from)) || (to && !DATE_RE.test(to))) {
+      setError('Enter dates as YYYY-MM-DD.');
+      return;
+    }
+    setError(null);
+    onApply({ search, cardId, from, to });
+  }
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <View style={[styles.modalCard, { backgroundColor: theme.background, borderColor: theme.backgroundSelected }]}>
+          <ScrollView contentContainerStyle={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <ThemedText type="subtitle">Filter payments</ThemedText>
+              <Pressable onPress={onClose}>
+                <ThemedText type="link" themeColor="tint">
+                  Close
+                </ThemedText>
+              </Pressable>
+            </View>
+
+            <TextField label="Search purchase" value={search} onChangeText={setSearch} placeholder="e.g. iPhone" />
+
+            <MenuField
+              label="Card"
+              valueLabel={cardOptions.find((opt) => opt.value === cardId)?.label ?? 'All cards'}
+              selectedValue={cardId}
+              onSelect={setCardId}
+              options={cardOptions}
+            />
+
+            <View style={styles.filterDateRow}>
+              <View style={styles.filterDateField}>
+                <TextField label="From date" value={from} onChangeText={setFrom} placeholder="YYYY-MM-DD" autoCapitalize="none" />
+              </View>
+              <View style={styles.filterDateField}>
+                <TextField label="To date" value={to} onChangeText={setTo} placeholder="YYYY-MM-DD" autoCapitalize="none" />
+              </View>
+            </View>
+
+            {error ? (
+              <ThemedText type="small" style={{ color: theme.danger }}>
+                {error}
+              </ThemedText>
+            ) : null}
+
+            <PrimaryButton label="Apply filters" onPress={handleApply} />
+            <PrimaryButton label="Clear filters" variant="secondary" onPress={onClear} />
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -612,5 +881,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 4,
+  },
+  fullModalCard: {
+    maxHeight: '94%',
+  },
+  paymentsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  filterDateRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  filterDateField: {
+    flex: 1,
   },
 });
