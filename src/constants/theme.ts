@@ -17,6 +17,7 @@ export const Colors = {
     tint: '#3C87F7',
     tintText: '#FFFFFF',
     danger: '#C2433B',
+    heroDeep: '#163B7D',
   },
   dark: {
     text: '#F7F2E7',
@@ -27,6 +28,7 @@ export const Colors = {
     tint: '#5B9DFF',
     tintText: '#0C1C2E',
     danger: '#FF6B62',
+    heroDeep: '#0D2A52',
   },
 } as const;
 

@@ -1,8 +1,22 @@
 import { ReactNode, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Card, IconButton, Menu, Text as PaperText, TextInput as PaperTextInput, useTheme as usePaperTheme } from 'react-native-paper';
+import { DatePickerModal } from 'react-native-paper-dates';
 
-import { ThemedText } from '@/components/themed-text';
-import { useTheme } from '@/hooks/use-theme';
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function isoToLocalDate(iso: string): Date | undefined {
+  if (!DATE_RE.test(iso)) return undefined;
+  const [year, month, day] = iso.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function localDateToIso(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 type PanelProps = {
   title: string;
@@ -13,69 +27,46 @@ type PanelProps = {
 };
 
 export function Panel({ title, caption, children, collapsible = false, defaultOpen = true }: PanelProps) {
-  const theme = useTheme();
   const [open, setOpen] = useState(defaultOpen);
   const showContent = !collapsible || open;
 
-  const header = (
-    <View style={styles.header}>
-      <View style={styles.headerText}>
-        <ThemedText type="default" style={styles.title}>{title}</ThemedText>
-        {caption ? <ThemedText themeColor="textSecondary" style={styles.caption}>{caption}</ThemedText> : null}
-      </View>
-      {collapsible ? (
-        <ThemedText themeColor="textSecondary">{open ? '▾' : '▸'}</ThemedText>
-      ) : null}
-    </View>
+  const titleBlock = (
+    <Card.Title
+      title={title}
+      subtitle={caption}
+      right={collapsible ? () => <IconButton icon={open ? 'chevron-up' : 'chevron-down'} /> : undefined}
+    />
   );
 
   return (
-    <View style={[styles.panel, { backgroundColor: theme.backgroundElement, borderColor: theme.backgroundSelected }]}>
+    <Card mode="outlined">
       {collapsible ? (
         <Pressable
           accessibilityRole="button"
           accessibilityState={{ expanded: open }}
           onPress={() => setOpen((value) => !value)}>
-          {header}
+          {titleBlock}
         </Pressable>
       ) : (
-        header
+        titleBlock
       )}
-      {showContent ? children : null}
-    </View>
+      {showContent ? <Card.Content style={styles.content}>{children}</Card.Content> : null}
+    </Card>
   );
 }
 
 export function RowItem({ label, value, danger = false }: { label: string; value: string; danger?: boolean }) {
-  const theme = useTheme();
+  const paperTheme = usePaperTheme();
 
   return (
     <View style={styles.row}>
-      <ThemedText themeColor="textSecondary">{label}</ThemedText>
-      <ThemedText style={{ color: danger ? '#C2433B' : theme.text }}>{value}</ThemedText>
-    </View>
-  );
-}
-
-export function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  const theme = useTheme();
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      style={[
-        styles.chip,
-        {
-          backgroundColor: selected ? theme.tint : theme.backgroundElement,
-          borderColor: selected ? theme.tint : theme.backgroundSelected,
-        },
-      ]}>
-      <ThemedText type="small" style={{ color: selected ? theme.tintText : theme.text }}>
+      <PaperText variant="bodyMedium" style={{ color: paperTheme.colors.onSurfaceVariant }}>
         {label}
-      </ThemedText>
-    </Pressable>
+      </PaperText>
+      <PaperText variant="bodyMedium" style={{ color: danger ? paperTheme.colors.error : paperTheme.colors.onSurface }}>
+        {value}
+      </PaperText>
+    </View>
   );
 }
 
@@ -92,117 +83,85 @@ export function MenuField<T,>({
   selectedValue: T;
   onSelect: (value: T) => void;
 }) {
-  const theme = useTheme();
   const [open, setOpen] = useState(false);
 
   return (
-    <View style={styles.menuField}>
-      <ThemedText type="small" themeColor="textSecondary">
-        {label}
-      </ThemedText>
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => setOpen(true)}
-        style={[styles.menuTrigger, { borderColor: theme.backgroundSelected, backgroundColor: theme.background }]}>
-        <ThemedText numberOfLines={1} style={styles.menuTriggerLabel}>
-          {valueLabel}
-        </ThemedText>
-        <ThemedText themeColor="textSecondary">▾</ThemedText>
-      </Pressable>
-
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable style={styles.menuBackdrop} onPress={() => setOpen(false)}>
-          <View style={[styles.menuCard, { backgroundColor: theme.background, borderColor: theme.backgroundSelected }]}>
-            <ScrollView>
-              {options.map((option, index) => {
-                const isSelected = option.value === selectedValue;
-                return (
-                  <Pressable
-                    key={index}
-                    onPress={() => {
-                      onSelect(option.value);
-                      setOpen(false);
-                    }}
-                    style={[styles.menuOption, isSelected && { backgroundColor: theme.backgroundSelected }]}>
-                    <ThemedText style={isSelected ? { color: theme.tint } : undefined}>{option.label}</ThemedText>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
+    <Menu
+      visible={open}
+      onDismiss={() => setOpen(false)}
+      anchor={
+        <Pressable accessibilityRole="button" onPress={() => setOpen(true)}>
+          <PaperTextInput
+            label={label}
+            value={valueLabel}
+            mode="outlined"
+            editable={false}
+            pointerEvents="none"
+            right={<PaperTextInput.Icon icon="menu-down" onPress={() => setOpen(true)} />}
+          />
         </Pressable>
-      </Modal>
-    </View>
+      }>
+      {options.map((option, index) => (
+        <Menu.Item
+          key={index}
+          title={option.label}
+          onPress={() => {
+            onSelect(option.value);
+            setOpen(false);
+          }}
+        />
+      ))}
+    </Menu>
+  );
+}
+
+export function DateField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <Pressable accessibilityRole="button" onPress={() => setOpen(true)}>
+        <PaperTextInput
+          label={label}
+          value={value}
+          mode="outlined"
+          editable={false}
+          pointerEvents="none"
+          placeholder="YYYY-MM-DD"
+          right={<PaperTextInput.Icon icon="calendar" onPress={() => setOpen(true)} />}
+        />
+      </Pressable>
+      <DatePickerModal
+        locale="en"
+        mode="single"
+        visible={open}
+        date={isoToLocalDate(value)}
+        onDismiss={() => setOpen(false)}
+        onConfirm={({ date }) => {
+          setOpen(false);
+          if (date) onChange(localDateToIso(date));
+        }}
+      />
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  panel: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
+  content: {
     gap: 8,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  headerText: {
-    flex: 1,
-    gap: 2,
-  },
-  title: {
-    fontWeight: '700',
-  },
-  caption: {
-    marginBottom: 2,
   },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 8,
-  },
-  chip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  menuField: {
-    gap: 4,
-  },
-  menuTrigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  menuTriggerLabel: {
-    flex: 1,
-  },
-  menuBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  menuCard: {
-    width: '100%',
-    maxWidth: 360,
-    maxHeight: '70%',
-    borderWidth: 1,
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-  menuOption: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
   },
 });

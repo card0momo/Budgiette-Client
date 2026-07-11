@@ -1,19 +1,18 @@
 import { Redirect } from 'expo-router';
-import { ActivityIndicator, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { ActivityIndicator } from 'react-native-paper';
 
 import AppTabs from '@/components/app-tabs';
 import { ThemedView } from '@/components/themed-view';
 import { useAuth } from '@/hooks/use-auth';
-import { useTheme } from '@/hooks/use-theme';
 
 export default function AppGroupLayout() {
   const { status } = useAuth();
-  const theme = useTheme();
 
   if (status === 'loading') {
     return (
       <ThemedView style={styles.loading}>
-        <ActivityIndicator color={theme.text} />
+        <ActivityIndicator />
       </ThemedView>
     );
   }

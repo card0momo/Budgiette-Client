@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, SegmentedButtons } from 'react-native-paper';
 
 import { PrimaryButton } from '@/components/auth/primary-button';
 import { TextField } from '@/components/auth/text-field';
-import { Chip, MenuField, Panel, RowItem } from '@/components/finance/cards';
+import { AppModal } from '@/components/finance/app-modal';
+import { MenuField, Panel, RowItem } from '@/components/finance/cards';
 import { ScreenShell } from '@/components/finance/screen-shell';
 import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/hooks/use-theme';
@@ -17,7 +19,6 @@ type DateFilter = 'all' | 'month' | '30d';
 const PAGE_SIZE = 25;
 
 export default function TransactionsScreen() {
-  const theme = useTheme();
   const [items, setItems] = useState<TransactionRead[]>([]);
   const [categories, setCategories] = useState<CategoryRead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,7 +107,7 @@ export default function TransactionsScreen() {
   }
 
   return (
-    <ScreenShell title="Transactions" subtitle="Income and expense feed parsed from your banking alerts.">
+    <ScreenShell title="Transactions">
       <Panel title="Totals" caption="Matches the filters below" collapsible defaultOpen={false}>
         <RowItem label="Income" value={money(totals.income)} />
         <RowItem label="Expenses" value={money(totals.expenses)} />
@@ -115,14 +116,15 @@ export default function TransactionsScreen() {
       <Panel title="Filters" caption="Narrow down the feed" collapsible defaultOpen={false}>
         <TextField label="Search" value={search} onChangeText={setSearch} placeholder="Merchant or description" />
 
-        <ThemedText type="small" themeColor="textSecondary">
-          Type
-        </ThemedText>
-        <View style={styles.chipRow}>
-          <Chip label="All" selected={directionFilter === 'all'} onPress={() => setDirectionFilter('all')} />
-          <Chip label="Income" selected={directionFilter === 'income'} onPress={() => setDirectionFilter('income')} />
-          <Chip label="Expense" selected={directionFilter === 'expense'} onPress={() => setDirectionFilter('expense')} />
-        </View>
+        <SegmentedButtons
+          value={directionFilter}
+          onValueChange={(value) => setDirectionFilter(value as 'all' | TransactionDirection)}
+          buttons={[
+            { value: 'all', label: 'All' },
+            { value: 'income', label: 'Income' },
+            { value: 'expense', label: 'Expense' },
+          ]}
+        />
 
         <MenuField
           label="Category"
@@ -139,14 +141,18 @@ export default function TransactionsScreen() {
         <ThemedText type="small" themeColor="textSecondary">
           When
         </ThemedText>
-        <View style={styles.chipRow}>
-          <Chip label="All time" selected={dateFilter === 'all'} onPress={() => setDateFilter('all')} />
-          <Chip label="This month" selected={dateFilter === 'month'} onPress={() => setDateFilter('month')} />
-          <Chip label="Last 30 days" selected={dateFilter === '30d'} onPress={() => setDateFilter('30d')} />
-        </View>
+        <SegmentedButtons
+          value={dateFilter}
+          onValueChange={(value) => setDateFilter(value as DateFilter)}
+          buttons={[
+            { value: 'all', label: 'All time' },
+            { value: 'month', label: 'This month' },
+            { value: '30d', label: 'Last 30 days' },
+          ]}
+        />
       </Panel>
 
-      {loading ? <ActivityIndicator color={theme.text} /> : null}
+      {loading ? <ActivityIndicator /> : null}
       {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
 
       <Panel title="Transactions" caption={`${filtered.length} of ${items.length}`}>
@@ -311,76 +317,71 @@ function TransactionDetailModal({
   }
 
   return (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.modalBackdrop}>
-        <View style={[styles.modalCard, { backgroundColor: theme.background, borderColor: theme.backgroundSelected }]}>
-          <ScrollView contentContainerStyle={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <ThemedText type="subtitle">
-                {getMerchantEmoji(merchantName, description)} Transaction
-              </ThemedText>
-              <Pressable onPress={onClose}>
-                <ThemedText type="link" themeColor="tint">
-                  Close
-                </ThemedText>
-              </Pressable>
-            </View>
-
-            <RowItem label="Source" value={transaction.source} />
-
-            <TextField label="Merchant" value={merchantName} onChangeText={setMerchantName} />
-            <TextField label="Description" value={description} onChangeText={setDescription} />
-            <TextField label="Amount" value={String(amount)} onChangeText={setAmount} keyboardType="decimal-pad" />
-            <TextField
-              label="Date & time"
-              value={occurredAt}
-              onChangeText={setOccurredAt}
-              placeholder="YYYY-MM-DDTHH:MM"
-              autoCapitalize="none"
-            />
-
-            <ThemedText type="small" themeColor="textSecondary">
-              Type
-            </ThemedText>
-            <View style={styles.chipRow}>
-              <Chip label="Expense" selected={direction === 'expense'} onPress={() => setDirection('expense')} />
-              <Chip label="Income" selected={direction === 'income'} onPress={() => setDirection('income')} />
-            </View>
-
-            <MenuField
-              label="Category"
-              valueLabel={categoryId == null ? 'Uncategorized' : categories.find((cat) => cat.id === categoryId)?.name ?? 'Uncategorized'}
-              selectedValue={categoryId}
-              onSelect={setCategoryId}
-              options={[
-                { value: null as number | null, label: 'Uncategorized' },
-                ...categories.map((cat) => ({ value: cat.id as number | null, label: cat.name })),
-              ]}
-            />
-
-            <View style={styles.newCategoryRow}>
-              <View style={styles.newCategoryInput}>
-                <TextField
-                  label="New category"
-                  value={newCategoryName}
-                  onChangeText={setNewCategoryName}
-                  placeholder="e.g. Food"
-                />
-              </View>
-              <PrimaryButton label="Add" variant="secondary" loading={addingCategory} onPress={handleAddCategory} />
-            </View>
-
-            {error ? (
-              <ThemedText type="small" style={{ color: theme.danger }}>
-                {error}
-              </ThemedText>
-            ) : null}
-
-            <PrimaryButton label="Save changes" loading={saving} onPress={handleSave} />
-          </ScrollView>
-        </View>
+    <AppModal visible onDismiss={onClose}>
+      <View style={styles.modalHeader}>
+        <ThemedText type="subtitle">
+          {getMerchantEmoji(merchantName, description)} Transaction
+        </ThemedText>
+        <Pressable onPress={onClose}>
+          <ThemedText type="link" themeColor="tint">
+            Close
+          </ThemedText>
+        </Pressable>
       </View>
-    </Modal>
+
+      <RowItem label="Source" value={transaction.source} />
+
+      <TextField label="Merchant" value={merchantName} onChangeText={setMerchantName} />
+      <TextField label="Description" value={description} onChangeText={setDescription} />
+      <TextField label="Amount" value={String(amount)} onChangeText={setAmount} keyboardType="decimal-pad" />
+      <TextField
+        label="Date & time"
+        value={occurredAt}
+        onChangeText={setOccurredAt}
+        placeholder="YYYY-MM-DDTHH:MM"
+        autoCapitalize="none"
+      />
+
+      <SegmentedButtons
+        value={direction}
+        onValueChange={(value) => setDirection(value as TransactionDirection)}
+        buttons={[
+          { value: 'expense', label: 'Expense' },
+          { value: 'income', label: 'Income' },
+        ]}
+      />
+
+      <MenuField
+        label="Category"
+        valueLabel={categoryId == null ? 'Uncategorized' : categories.find((cat) => cat.id === categoryId)?.name ?? 'Uncategorized'}
+        selectedValue={categoryId}
+        onSelect={setCategoryId}
+        options={[
+          { value: null as number | null, label: 'Uncategorized' },
+          ...categories.map((cat) => ({ value: cat.id as number | null, label: cat.name })),
+        ]}
+      />
+
+      <View style={styles.newCategoryRow}>
+        <View style={styles.newCategoryInput}>
+          <TextField
+            label="New category"
+            value={newCategoryName}
+            onChangeText={setNewCategoryName}
+            placeholder="e.g. Food"
+          />
+        </View>
+        <PrimaryButton label="Add" variant="secondary" loading={addingCategory} onPress={handleAddCategory} />
+      </View>
+
+      {error ? (
+        <ThemedText type="small" style={{ color: theme.danger }}>
+          {error}
+        </ThemedText>
+      ) : null}
+
+      <PrimaryButton label="Save changes" loading={saving} onPress={handleSave} />
+    </AppModal>
   );
 }
 
@@ -395,11 +396,6 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 8,
   },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -413,21 +409,6 @@ const styles = StyleSheet.create({
   rowMain: {
     flex: 1,
     gap: 2,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalCard: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    borderWidth: 1,
-    maxHeight: '85%',
-  },
-  modalContent: {
-    padding: 20,
-    gap: 12,
   },
   modalHeader: {
     flexDirection: 'row',

@@ -9,17 +9,21 @@ import { useIsWideScreen } from '@/hooks/use-is-wide-screen';
 import { useTheme } from '@/hooks/use-theme';
 
 type Props = {
-  title: string;
-  subtitle: string;
+  title?: string;
+  subtitle?: string;
+  /** Full-width content rendered above the (possibly two-column) body — e.g. a hero banner or tab row. */
+  header?: ReactNode;
+  /** Opt out of the wide-screen two-column panel split — for screens that manage their own internal layout (grids, tabs). */
+  singleColumn?: boolean;
   children: ReactNode;
 };
 
-export function ScreenShell({ title, subtitle, children }: Props) {
+export function ScreenShell({ title, subtitle, header, singleColumn = false, children }: Props) {
   const theme = useTheme();
   const isNarrow = useIsNarrowScreen();
   const isWide = useIsWideScreen();
   const isWeb = Platform.OS === 'web';
-  const showColumns = isWeb && isWide;
+  const showColumns = isWeb && isWide && !singleColumn;
 
   return (
     <View style={[styles.root, { backgroundColor: theme.background }]}>
@@ -33,11 +37,14 @@ export function ScreenShell({ title, subtitle, children }: Props) {
             isWeb && (isNarrow ? styles.contentNarrowWeb : styles.contentWideWeb),
           ]}>
           <View style={showColumns ? styles.wideWrap : undefined}>
-            <View style={styles.header}>
-              <ThemedText type="subtitle">{title}</ThemedText>
-              <ThemedText themeColor="textSecondary">{subtitle}</ThemedText>
-            </View>
-            {showColumns ? <TwoColumnLayout>{children}</TwoColumnLayout> : children}
+            {title || subtitle ? (
+              <View style={styles.header}>
+                {title ? <ThemedText type="subtitle">{title}</ThemedText> : null}
+                {subtitle ? <ThemedText themeColor="textSecondary">{subtitle}</ThemedText> : null}
+              </View>
+            ) : null}
+            {header ? <View style={styles.fullWidthHeader}>{header}</View> : null}
+            {showColumns ? <TwoColumnLayout>{children}</TwoColumnLayout> : <View style={styles.stack}>{children}</View>}
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -78,6 +85,10 @@ const styles = StyleSheet.create({
     gap: 4,
     marginBottom: 8,
   },
+  fullWidthHeader: {
+    gap: 14,
+    marginBottom: 14,
+  },
   wideWrap: {
     width: WideColumnWidthFraction,
     alignSelf: 'center',
@@ -85,6 +96,9 @@ const styles = StyleSheet.create({
   columnsRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+    gap: 14,
+  },
+  stack: {
     gap: 14,
   },
   column: {

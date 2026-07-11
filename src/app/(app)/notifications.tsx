@@ -1,16 +1,15 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { ActivityIndicator } from 'react-native-paper';
 
 import { PrimaryButton } from '@/components/auth/primary-button';
 import { Panel, RowItem } from '@/components/finance/cards';
 import { ScreenShell } from '@/components/finance/screen-shell';
 import { ThemedText } from '@/components/themed-text';
-import { useTheme } from '@/hooks/use-theme';
 import { api, NotificationRead } from '@/lib/api';
 import { shortDate } from '@/lib/format';
 
 export default function NotificationsScreen() {
-  const theme = useTheme();
   const [items, setItems] = useState<NotificationRead[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,8 +42,8 @@ export default function NotificationsScreen() {
   }
 
   return (
-    <ScreenShell title="Alerts" subtitle="Spend warnings and MSI due reminders.">
-      {loading ? <ActivityIndicator color={theme.text} /> : null}
+    <ScreenShell title="Alerts">
+      {loading ? <ActivityIndicator /> : null}
       {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
 
       {items.map((notification) => (

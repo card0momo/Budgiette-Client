@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { ActivityIndicator, SegmentedButtons } from 'react-native-paper';
 
 import { PrimaryButton } from '@/components/auth/primary-button';
 import { TextField } from '@/components/auth/text-field';
-import { Chip, MenuField, Panel, RowItem } from '@/components/finance/cards';
+import { MenuField, Panel, RowItem } from '@/components/finance/cards';
 import { ScreenShell } from '@/components/finance/screen-shell';
 import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/hooks/use-theme';
@@ -21,7 +22,6 @@ const PERIOD_OPTIONS: { value: BudgetPeriod; label: string }[] = [
 type CategoryOption = { value: number | null; label: string };
 
 export default function BudgetsScreen() {
-  const theme = useTheme();
   const [budgets, setBudgets] = useState<BudgetRead[]>([]);
   const [statusRows, setStatusRows] = useState<BudgetStatus[]>([]);
   const [categories, setCategories] = useState<CategoryRead[]>([]);
@@ -57,12 +57,12 @@ export default function BudgetsScreen() {
   ];
 
   return (
-    <ScreenShell title="Budgets" subtitle="Weekly, monthly, and yearly budget compliance.">
+    <ScreenShell title="Budgets">
       <Panel title="Add budget" caption="Set a spending limit for a period" collapsible defaultOpen={false}>
         <BudgetForm categoryOptions={categoryOptions} onCreated={loadAll} />
       </Panel>
 
-      {loading ? <ActivityIndicator color={theme.text} /> : null}
+      {loading ? <ActivityIndicator /> : null}
       {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
 
       {budgets.map((budget) => (
@@ -90,11 +90,7 @@ function PeriodPicker({ value, onChange }: { value: BudgetPeriod; onChange: (val
       <ThemedText type="small" themeColor="textSecondary">
         Period
       </ThemedText>
-      <View style={styles.chipRow}>
-        {PERIOD_OPTIONS.map((opt) => (
-          <Chip key={opt.value} label={opt.label} selected={value === opt.value} onPress={() => onChange(opt.value)} />
-        ))}
-      </View>
+      <SegmentedButtons value={value} onValueChange={(next) => onChange(next as BudgetPeriod)} buttons={PERIOD_OPTIONS} />
     </>
   );
 }
@@ -325,10 +321,5 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 10,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
   },
 });

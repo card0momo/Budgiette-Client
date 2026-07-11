@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator } from 'react-native-paper';
 
 import { Panel, RowItem } from '@/components/finance/cards';
 import { ScreenShell } from '@/components/finance/screen-shell';
@@ -96,9 +97,7 @@ export default function DashboardScreen() {
   const budgetOverruns = budgets.filter((b) => b.is_over_limit).length;
 
   return (
-    <ScreenShell
-      title="Budgiette"
-      subtitle="Personal finance cockpit for transactions, budgets, MSI and alerts.">
+    <ScreenShell title="Budgiette">
       <Panel title="Overview" caption="Live totals from your current transaction feed">
         <Pressable onPress={() => setHideAmounts((value) => !value)} style={styles.hideToggle}>
           <ThemedText type="small" themeColor="tint">
@@ -140,7 +139,7 @@ export default function DashboardScreen() {
         <RowItem label="Unread alerts" value={String(notifications.filter((n) => !n.is_read).length)} />
       </Panel>
 
-      {loading ? <ActivityIndicator color={theme.text} /> : null}
+      {loading ? <ActivityIndicator /> : null}
       {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
 
       {healthStatus !== 'ok' ? (

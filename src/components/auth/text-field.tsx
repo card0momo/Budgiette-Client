@@ -1,44 +1,23 @@
 import { forwardRef } from 'react';
-import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
+import { StyleSheet, View, type TextInput as RNTextInput } from 'react-native';
+import { HelperText, TextInput, type TextInputProps } from 'react-native-paper';
 
-import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
-
-type TextFieldProps = TextInputProps & {
+type TextFieldProps = Omit<TextInputProps, 'mode' | 'label' | 'theme'> & {
   label: string;
   error?: string | null;
 };
 
-export const TextField = forwardRef<TextInput, TextFieldProps>(function TextField(
-  { label, error, style, ...inputProps },
+export const TextField = forwardRef<RNTextInput, TextFieldProps>(function TextField(
+  { label, error, ...inputProps },
   ref
 ) {
-  const theme = useTheme();
-
   return (
     <View style={styles.wrap}>
-      <ThemedText type="small" themeColor="textSecondary">
-        {label}
-      </ThemedText>
-      <TextInput
-        ref={ref}
-        placeholderTextColor={theme.textSecondary}
-        style={[
-          styles.input,
-          {
-            color: theme.text,
-            backgroundColor: theme.backgroundElement,
-            borderColor: error ? theme.danger : theme.backgroundSelected,
-          },
-          style,
-        ]}
-        {...inputProps}
-      />
+      <TextInput ref={ref} label={label} mode="outlined" error={!!error} {...inputProps} />
       {error ? (
-        <ThemedText type="small" style={{ color: theme.danger }}>
+        <HelperText type="error" visible>
           {error}
-        </ThemedText>
+        </HelperText>
       ) : null}
     </View>
   );
@@ -46,13 +25,6 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
 
 const styles = StyleSheet.create({
   wrap: {
-    gap: Spacing.one,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two + 2,
-    fontSize: 16,
+    gap: 0,
   },
 });
