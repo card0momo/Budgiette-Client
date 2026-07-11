@@ -46,6 +46,12 @@ export default function TransactionsScreen() {
 
   const categoryById = useMemo(() => new Map(categories.map((cat) => [cat.id, cat])), [categories]);
 
+  const categoryFilterLabel = useMemo(() => {
+    if (categoryFilter === 'all') return 'All';
+    if (categoryFilter === 'uncategorized') return 'Uncategorized';
+    return categoryById.get(categoryFilter)?.name ?? 'All';
+  }, [categoryFilter, categoryById]);
+
   const filtered = useMemo(() => {
     const monthStart = new Date();
     monthStart.setDate(1);
@@ -87,12 +93,12 @@ export default function TransactionsScreen() {
 
   return (
     <ScreenShell title="Transactions" subtitle="Income and expense feed parsed from your banking alerts.">
-      <Panel title="Totals" caption="Matches the filters below">
+      <Panel title="Totals" caption="Matches the filters below" collapsible>
         <RowItem label="Income" value={money(totals.income)} />
         <RowItem label="Expenses" value={money(totals.expenses)} />
       </Panel>
 
-      <Panel title="Filters" caption="Narrow down the feed">
+      <Panel title="Filters" caption="Narrow down the feed" collapsible>
         <TextField label="Search" value={search} onChangeText={setSearch} placeholder="Merchant or description" />
 
         <ThemedText type="small" themeColor="textSecondary">
@@ -104,25 +110,17 @@ export default function TransactionsScreen() {
           <Chip label="Expense" selected={directionFilter === 'expense'} onPress={() => setDirectionFilter('expense')} />
         </View>
 
-        <ThemedText type="small" themeColor="textSecondary">
-          Category
-        </ThemedText>
-        <View style={styles.chipRow}>
-          <Chip label="All" selected={categoryFilter === 'all'} onPress={() => setCategoryFilter('all')} />
-          <Chip
-            label="Uncategorized"
-            selected={categoryFilter === 'uncategorized'}
-            onPress={() => setCategoryFilter('uncategorized')}
-          />
-          {categories.map((cat) => (
-            <Chip
-              key={cat.id}
-              label={cat.name}
-              selected={categoryFilter === cat.id}
-              onPress={() => setCategoryFilter(cat.id)}
-            />
-          ))}
-        </View>
+        <MenuField
+          label="Category"
+          valueLabel={categoryFilterLabel}
+          selectedValue={categoryFilter}
+          onSelect={setCategoryFilter}
+          options={[
+            { value: 'all' as CategoryFilter, label: 'All' },
+            { value: 'uncategorized' as CategoryFilter, label: 'Uncategorized' },
+            ...categories.map((cat) => ({ value: cat.id as CategoryFilter, label: cat.name })),
+          ]}
+        />
 
         <ThemedText type="small" themeColor="textSecondary">
           When
@@ -187,6 +185,63 @@ function Chip({ label, selected, onPress }: { label: string; selected: boolean; 
         {label}
       </ThemedText>
     </Pressable>
+  );
+}
+
+function MenuField<T,>({
+  label,
+  valueLabel,
+  options,
+  selectedValue,
+  onSelect,
+}: {
+  label: string;
+  valueLabel: string;
+  options: { value: T; label: string }[];
+  selectedValue: T;
+  onSelect: (value: T) => void;
+}) {
+  const theme = useTheme();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <View style={styles.menuField}>
+      <ThemedText type="small" themeColor="textSecondary">
+        {label}
+      </ThemedText>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => setOpen(true)}
+        style={[styles.menuTrigger, { borderColor: theme.backgroundSelected, backgroundColor: theme.background }]}>
+        <ThemedText numberOfLines={1} style={styles.menuTriggerLabel}>
+          {valueLabel}
+        </ThemedText>
+        <ThemedText themeColor="textSecondary">▾</ThemedText>
+      </Pressable>
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable style={styles.menuBackdrop} onPress={() => setOpen(false)}>
+          <View style={[styles.menuCard, { backgroundColor: theme.background, borderColor: theme.backgroundSelected }]}>
+            <ScrollView>
+              {options.map((option, index) => {
+                const isSelected = option.value === selectedValue;
+                return (
+                  <Pressable
+                    key={index}
+                    onPress={() => {
+                      onSelect(option.value);
+                      setOpen(false);
+                    }}
+                    style={[styles.menuOption, isSelected && { backgroundColor: theme.backgroundSelected }]}>
+                    <ThemedText style={isSelected ? { color: theme.tint } : undefined}>{option.label}</ThemedText>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
+    </View>
   );
 }
 
@@ -338,15 +393,16 @@ function TransactionDetailModal({
               <Chip label="Income" selected={direction === 'income'} onPress={() => setDirection('income')} />
             </View>
 
-            <ThemedText type="small" themeColor="textSecondary">
-              Category
-            </ThemedText>
-            <View style={styles.chipRow}>
-              <Chip label="Uncategorized" selected={categoryId == null} onPress={() => setCategoryId(null)} />
-              {categories.map((cat) => (
-                <Chip key={cat.id} label={cat.name} selected={categoryId === cat.id} onPress={() => setCategoryId(cat.id)} />
-              ))}
-            </View>
+            <MenuField
+              label="Category"
+              valueLabel={categoryId == null ? 'Uncategorized' : categories.find((cat) => cat.id === categoryId)?.name ?? 'Uncategorized'}
+              selectedValue={categoryId}
+              onSelect={setCategoryId}
+              options={[
+                { value: null as number | null, label: 'Uncategorized' },
+                ...categories.map((cat) => ({ value: cat.id as number | null, label: cat.name })),
+              ]}
+            />
 
             <View style={styles.newCategoryRow}>
               <View style={styles.newCategoryInput}>
@@ -431,5 +487,39 @@ const styles = StyleSheet.create({
   },
   newCategoryInput: {
     flex: 1,
+  },
+  menuField: {
+    gap: 4,
+  },
+  menuTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  menuTriggerLabel: {
+    flex: 1,
+  },
+  menuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  menuCard: {
+    width: '100%',
+    maxWidth: 360,
+    maxHeight: '70%',
+    borderWidth: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  menuOption: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
   },
 });

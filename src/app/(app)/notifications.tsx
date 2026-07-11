@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet } from 'react-native';
 
+import { PrimaryButton } from '@/components/auth/primary-button';
 import { Panel, RowItem } from '@/components/finance/cards';
 import { ScreenShell } from '@/components/finance/screen-shell';
 import { ThemedText } from '@/components/themed-text';
@@ -32,6 +33,15 @@ export default function NotificationsScreen() {
     };
   }, []);
 
+  async function handleMarkRead(id: number) {
+    try {
+      const updated = await api.markNotificationRead(id);
+      setItems((prev) => prev.map((item) => (item.id === id ? updated : item)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not mark notification as read');
+    }
+  }
+
   return (
     <ScreenShell title="Alerts" subtitle="Spend warnings and MSI due reminders.">
       {loading ? <ActivityIndicator color={theme.text} /> : null}
@@ -41,7 +51,14 @@ export default function NotificationsScreen() {
         <Panel key={notification.id} title={notification.title} caption={notification.type}>
           <ThemedText>{notification.message}</ThemedText>
           <RowItem label="Created" value={shortDate(notification.created_at)} />
-          <RowItem label="Status" value={notification.is_read ? 'Read' : 'Unread'} />
+          <RowItem label="Status" value={notification.is_read ? 'Read' : 'Unread'} danger={!notification.is_read} />
+          {!notification.is_read ? (
+            <PrimaryButton
+              label="Mark as read"
+              variant="secondary"
+              onPress={() => handleMarkRead(notification.id)}
+            />
+          ) : null}
         </Panel>
       ))}
 

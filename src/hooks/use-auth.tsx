@@ -1,7 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Platform } from 'react-native';
 
 import { api, ApiError, UserCreate, UserLogin, UserRead } from '@/lib/api';
 import { clearStoredSession, loadStoredSession, saveStoredSession } from '@/lib/auth-storage';
+import { registerForPushNotificationsAsync } from '@/lib/push-notifications';
 import { clearSession, setSession, setUnauthorizedHandler } from '@/lib/session';
 
 type AuthStatus = 'loading' | 'signedIn' | 'signedOut';
@@ -41,6 +43,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     return () => setUnauthorizedHandler(null);
   }, [logout]);
+
+  useEffect(() => {
+    // Web push permission must be requested from an explicit user gesture (the
+    // Settings "Enable notifications" button), not fired automatically here —
+    // browsers block or discourage unsolicited permission prompts.
+    if (status !== 'signedIn' || Platform.OS === 'web') return;
+    let cancelled = false;
+
+    (async () => {
+      const result = await registerForPushNotificationsAsync();
+      if (cancelled || 'error' in result) return;
+      try {
+        await api.registerPushToken({ token: result.token, platform: result.platform });
+      } catch {
+        // Best-effort — a failed registration shouldn't affect the signed-in session.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [status]);
 
   useEffect(() => {
     let mounted = true;

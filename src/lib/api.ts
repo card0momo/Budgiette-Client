@@ -3,7 +3,13 @@ import { getSession, notifyUnauthorized } from '@/lib/session';
 
 export type TransactionDirection = 'income' | 'expense';
 export type BudgetPeriod = 'week' | 'month' | 'year';
-export type NotificationType = 'budget_exceeded' | 'spending_spike' | 'msi_due' | 'msi_late';
+export type NotificationType =
+  | 'budget_exceeded'
+  | 'spending_spike'
+  | 'msi_due'
+  | 'msi_late'
+  | 'new_transactions'
+  | 'sync_failed';
 
 export type HealthRead = {
   status: string;
@@ -147,6 +153,8 @@ export type NotificationRead = {
   type: NotificationType;
   title: string;
   message: string;
+  related_type: string | null;
+  related_id: number | null;
   is_read: boolean;
   created_at: string;
 };
@@ -156,6 +164,31 @@ export type NotificationCreate = {
   title: string;
   message: string;
 };
+
+export type PushTokenCreate = {
+  token: string;
+  platform: string;
+};
+
+export type WebPushSubscriptionCreate = {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+};
+
+export type VapidPublicKeyRead = {
+  public_key: string;
+};
+
+export type NotificationPreferenceRead = {
+  push_enabled: boolean;
+  budget_alerts_enabled: boolean;
+  msi_reminders_enabled: boolean;
+  ingestion_alerts_enabled: boolean;
+  sync_failure_alerts_enabled: boolean;
+};
+
+export type NotificationPreferenceUpdate = Partial<NotificationPreferenceRead>;
 
 export type MailboxRead = {
   id: number;
@@ -292,6 +325,22 @@ export const api = {
   listNotifications: () => request<NotificationRead[]>('/notifications'),
   createNotification: (payload: NotificationCreate) =>
     request<NotificationRead>('/notifications', { method: 'POST', body: payload }),
+  markNotificationRead: (notificationId: number) =>
+    request<NotificationRead>(`/notifications/${notificationId}/read`, { method: 'PATCH' }),
+  registerPushToken: (payload: PushTokenCreate) =>
+    request<void>('/notifications/push-tokens', { method: 'POST', body: payload }),
+  unregisterPushToken: (token: string) =>
+    request<void>(`/notifications/push-tokens?token=${encodeURIComponent(token)}`, { method: 'DELETE' }),
+  getVapidPublicKey: () => request<VapidPublicKeyRead>('/notifications/vapid-public-key', { skipAuth: true }),
+  registerWebPushSubscription: (payload: WebPushSubscriptionCreate) =>
+    request<void>('/notifications/web-push-subscriptions', { method: 'POST', body: payload }),
+  unregisterWebPushSubscription: (endpoint: string) =>
+    request<void>(`/notifications/web-push-subscriptions?endpoint=${encodeURIComponent(endpoint)}`, {
+      method: 'DELETE',
+    }),
+  getNotificationPreferences: () => request<NotificationPreferenceRead>('/notifications/preferences'),
+  updateNotificationPreferences: (payload: NotificationPreferenceUpdate) =>
+    request<NotificationPreferenceRead>('/notifications/preferences', { method: 'PATCH', body: payload }),
   listBanks: () => request<BankInfo[]>('/ingestion/banks'),
   listMailboxes: () => request<MailboxRead[]>('/ingestion/mailboxes'),
   createMailbox: (payload: MailboxCreate) =>

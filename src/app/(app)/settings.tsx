@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/auth/primary-button';
 import { TextField } from '@/components/auth/text-field';
@@ -8,9 +8,12 @@ import { ScreenShell } from '@/components/finance/screen-shell';
 import { ThemedText } from '@/components/themed-text';
 import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
-import { AccountRead, api, BankInfo, MailboxRead } from '@/lib/api';
-import { APP_ENV } from '@/lib/config';
+import { AccountRead, api, BankInfo, MailboxRead, NotificationPreferenceRead } from '@/lib/api';
 import { shortDate } from '@/lib/format';
+import { PushRegistrationResult, registerForPushNotificationsAsync } from '@/lib/push-notifications';
+import { registerForWebPushAsync, WebPushRegistrationResult } from '@/lib/web-push';
+
+type RegistrationResult = PushRegistrationResult | WebPushRegistrationResult;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -65,10 +68,6 @@ export default function SettingsScreen() {
         <PrimaryButton label="Log out" variant="secondary" loading={loggingOut} onPress={handleLogout} />
       </Panel>
 
-      <Panel title="Connection defaults" caption="Edit in env vars when moving between environments">
-        <RowItem label="EXPO_PUBLIC_API_URL" value={APP_ENV.apiBaseUrl} />
-      </Panel>
-
       <Panel
         title="Email server"
         caption="Connect a mailbox so bank alert emails become transactions automatically">
@@ -92,7 +91,137 @@ export default function SettingsScreen() {
           <AccountCard key={account.id} account={account} onChanged={loadAll} />
         ))}
       </Panel>
+
+      <NotificationsPanel />
     </ScreenShell>
+  );
+}
+
+function NotificationsPanel() {
+  const theme = useTheme();
+  const [prefs, setPrefs] = useState<NotificationPreferenceRead | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [registration, setRegistration] = useState<RegistrationResult | null>(null);
+  const [registering, setRegistering] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    api
+      .getNotificationPreferences()
+      .then((rows) => {
+        if (mounted) setPrefs(rows);
+      })
+      .catch((err) => {
+        if (mounted) setError(err instanceof Error ? err.message : 'Failed to load notification preferences');
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  async function handleToggle(field: keyof NotificationPreferenceRead, value: boolean) {
+    if (!prefs) return;
+    const previous = prefs;
+    setPrefs({ ...prefs, [field]: value });
+    setError(null);
+    try {
+      const updated = await api.updateNotificationPreferences({ [field]: value });
+      setPrefs(updated);
+    } catch (err) {
+      setPrefs(previous);
+      setError(err instanceof Error ? err.message : 'Could not save preference.');
+    }
+  }
+
+  async function handleEnableDevice() {
+    setRegistering(true);
+    setError(null);
+    try {
+      if (Platform.OS === 'web') {
+        const result = await registerForWebPushAsync();
+        setRegistration(result);
+      } else {
+        const result = await registerForPushNotificationsAsync();
+        setRegistration(result);
+        if ('token' in result) {
+          await api.registerPushToken({ token: result.token, platform: result.platform });
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not register this device.');
+    } finally {
+      setRegistering(false);
+    }
+  }
+
+  return (
+    <Panel title="Notifications" caption="Choose which alerts you want to receive" collapsible>
+      {loading ? <ActivityIndicator color={theme.text} /> : null}
+      {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
+
+      {prefs ? (
+        <>
+          <NotificationToggleRow
+            label="All push notifications"
+            value={prefs.push_enabled}
+            onValueChange={(value) => handleToggle('push_enabled', value)}
+          />
+          <NotificationToggleRow
+            label="Budget & spending alerts"
+            value={prefs.budget_alerts_enabled}
+            onValueChange={(value) => handleToggle('budget_alerts_enabled', value)}
+          />
+          <NotificationToggleRow
+            label="MSI payment reminders"
+            value={prefs.msi_reminders_enabled}
+            onValueChange={(value) => handleToggle('msi_reminders_enabled', value)}
+          />
+          <NotificationToggleRow
+            label="New transaction alerts"
+            value={prefs.ingestion_alerts_enabled}
+            onValueChange={(value) => handleToggle('ingestion_alerts_enabled', value)}
+          />
+          <NotificationToggleRow
+            label="Mailbox sync failure alerts"
+            value={prefs.sync_failure_alerts_enabled}
+            onValueChange={(value) => handleToggle('sync_failure_alerts_enabled', value)}
+          />
+        </>
+      ) : null}
+
+      {registration && 'error' in registration ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          This device isn&apos;t registered for push yet: {registration.error}
+        </ThemedText>
+      ) : null}
+      <PrimaryButton
+        label="Enable notifications on this device"
+        variant="secondary"
+        loading={registering}
+        onPress={handleEnableDevice}
+      />
+    </Panel>
+  );
+}
+
+function NotificationToggleRow({
+  label,
+  value,
+  onValueChange,
+}: {
+  label: string;
+  value: boolean;
+  onValueChange: (value: boolean) => void;
+}) {
+  return (
+    <View style={styles.switchRow}>
+      <ThemedText themeColor="textSecondary">{label}</ThemedText>
+      <Switch value={value} onValueChange={onValueChange} />
+    </View>
   );
 }
 

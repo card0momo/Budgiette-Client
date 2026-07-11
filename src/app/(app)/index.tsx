@@ -8,7 +8,18 @@ import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
 import { APP_ENV } from '@/lib/config';
 import { api, BudgetStatus, NotificationRead, TransactionRead } from '@/lib/api';
-import { money } from '@/lib/format';
+import { money, shortDate } from '@/lib/format';
+import { getMerchantEmoji } from '@/lib/merchant-icons';
+
+// Fixed chart hues — validated with the dataviz palette checker against both the
+// light (#F8F4EE) and dark (#101A24) app surfaces, so the pair stays mode-invariant
+// rather than switching to the UI's dark-mode tint/danger (tuned for text contrast,
+// not chart-fill lightness bands).
+const CHART_COLORS = { income: '#3C87F7', expense: '#C2433B' } as const;
+const CHART_MONTHS = 6;
+const BAR_MAX_HEIGHT = 90;
+
+type MonthBucket = { key: string; label: string; income: number; expense: number };
 
 export default function DashboardScreen() {
   const theme = useTheme();
@@ -64,6 +75,11 @@ export default function DashboardScreen() {
     );
   }, [transactions]);
 
+  const monthlyTotals = useMemo(() => buildMonthlyTotals(transactions), [transactions]);
+
+  // The backend already returns transactions ordered by occurred_at desc.
+  const latestTransaction = transactions[0] ?? null;
+
   const budgetOverruns = budgets.filter((b) => b.is_over_limit).length;
 
   return (
@@ -81,6 +97,32 @@ export default function DashboardScreen() {
         <RowItem label="Expenses" value={money(totals.expense)} danger={totals.expense > totals.income} />
         <RowItem label="Net" value={money(totals.income - totals.expense)} danger={totals.expense > totals.income} />
       </Panel>
+
+      <Panel title="Monthly income vs expense" caption={`Last ${CHART_MONTHS} months`}>
+        <MonthlyChart months={monthlyTotals} />
+      </Panel>
+
+      {latestTransaction ? (
+        <Panel title="Latest transaction" caption={shortDate(latestTransaction.occurred_at)}>
+          <View style={styles.latestRow}>
+            <ThemedText style={styles.latestEmoji}>
+              {getMerchantEmoji(latestTransaction.merchant_name, latestTransaction.description)}
+            </ThemedText>
+            <View style={styles.latestMain}>
+              <ThemedText numberOfLines={1}>{latestTransaction.merchant_name}</ThemedText>
+              {latestTransaction.description ? (
+                <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                  {latestTransaction.description}
+                </ThemedText>
+              ) : null}
+            </View>
+            <ThemedText style={{ color: latestTransaction.direction === 'expense' ? theme.danger : theme.text }}>
+              {latestTransaction.direction === 'expense' ? '-' : '+'}
+              {money(latestTransaction.amount)}
+            </ThemedText>
+          </View>
+        </Panel>
+      ) : null}
 
       <Panel title="Signals" caption="Behavior flags from budget and notification modules">
         <RowItem label="Over-limit budgets" value={String(budgetOverruns)} danger={budgetOverruns > 0} />
@@ -102,11 +144,154 @@ export default function DashboardScreen() {
   );
 }
 
+function buildMonthlyTotals(transactions: TransactionRead[]): MonthBucket[] {
+  const now = new Date();
+  const months: MonthBucket[] = [];
+  for (let i = CHART_MONTHS - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({
+      key: `${d.getFullYear()}-${d.getMonth()}`,
+      label: d.toLocaleDateString('en-US', { month: 'short' }),
+      income: 0,
+      expense: 0,
+    });
+  }
+
+  const byKey = new Map(months.map((m) => [m.key, m]));
+  for (const tx of transactions) {
+    const occurred = new Date(tx.occurred_at);
+    const bucket = byKey.get(`${occurred.getFullYear()}-${occurred.getMonth()}`);
+    if (!bucket) continue;
+    const amount = Number(tx.amount);
+    if (tx.direction === 'income') bucket.income += amount;
+    else bucket.expense += amount;
+  }
+
+  return months;
+}
+
+function MonthlyChart({ months }: { months: MonthBucket[] }) {
+  const theme = useTheme();
+  const maxValue = Math.max(1, ...months.flatMap((m) => [m.income, m.expense]));
+  const latestIndex = months.length - 1;
+
+  return (
+    <View>
+      <View style={styles.legendRow}>
+        <LegendSwatch color={CHART_COLORS.income} label="Income" />
+        <LegendSwatch color={CHART_COLORS.expense} label="Expense" />
+      </View>
+
+      <View style={[styles.chartRow, { borderBottomColor: theme.backgroundSelected }]}>
+        {months.map((month, index) => (
+          <View key={month.key} style={styles.chartGroup}>
+            <View style={styles.barPair}>
+              <ChartBar
+                height={(month.income / maxValue) * BAR_MAX_HEIGHT}
+                color={CHART_COLORS.income}
+                label={index === latestIndex ? money(month.income) : undefined}
+              />
+              <ChartBar
+                height={(month.expense / maxValue) * BAR_MAX_HEIGHT}
+                color={CHART_COLORS.expense}
+                label={index === latestIndex ? money(month.expense) : undefined}
+              />
+            </View>
+            <ThemedText type="small" themeColor="textSecondary">
+              {month.label}
+            </ThemedText>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function ChartBar({ height, color, label }: { height: number; color: string; label?: string }) {
+  return (
+    <View style={styles.barWrap}>
+      {label ? (
+        <ThemedText type="small" themeColor="textSecondary" style={styles.barLabel} numberOfLines={1}>
+          {label}
+        </ThemedText>
+      ) : null}
+      <View style={[styles.bar, { height: Math.max(height, 2), backgroundColor: color }]} />
+    </View>
+  );
+}
+
+function LegendSwatch({ color, label }: { color: string; label: string }) {
+  return (
+    <View style={styles.legendItem}>
+      <View style={[styles.legendDot, { backgroundColor: color }]} />
+      <ThemedText type="small" themeColor="textSecondary">
+        {label}
+      </ThemedText>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   error: {
     color: '#C2433B',
   },
   tipBox: {
     paddingBottom: 22,
+  },
+  legendRow: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 10,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  chartRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    paddingTop: 8,
+    paddingBottom: 6,
+  },
+  chartGroup: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  barPair: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 2,
+  },
+  barWrap: {
+    alignItems: 'center',
+  },
+  bar: {
+    width: 14,
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 4,
+  },
+  barLabel: {
+    fontSize: 9,
+    marginBottom: 2,
+  },
+  latestRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  latestEmoji: {
+    fontSize: 22,
+  },
+  latestMain: {
+    flex: 1,
+    gap: 2,
   },
 });
