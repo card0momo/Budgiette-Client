@@ -956,6 +956,7 @@ function PlanDetailModal({
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [paymentMode, setPaymentMode] = useState<'monthly' | 'full'>('monthly');
   const [paymentAmount, setPaymentAmount] = useState(plan.monthly_payment);
   const [paymentDate, setPaymentDate] = useState(todayIso());
   const [paymentSource, setPaymentSource] = useState('');
@@ -963,6 +964,7 @@ function PlanDetailModal({
 
   const isComplete = isPlanComplete(plan);
   const monthlyPayment = computeMonthlyPayment(totalAmount, monthsTotal);
+  const effectivePaymentAmount = paymentMode === 'full' ? plan.remaining_balance : paymentAmount;
 
   function handleStartEditing() {
     setPurchaseName(plan.purchase_name);
@@ -1022,13 +1024,13 @@ function PlanDetailModal({
   }
 
   async function handleRegisterPayment() {
-    const amount = Number(paymentAmount);
+    const amount = Number(effectivePaymentAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
       setError('Enter a valid payment amount.');
       return;
     }
     if (!DATE_RE.test(paymentDate)) {
-      setError('Enter the payment date as YYYY-MM-DD.');
+      setError('Pick a payment date.');
       return;
     }
     if (!paymentSource.trim()) {
@@ -1040,8 +1042,9 @@ function PlanDetailModal({
     try {
       await api.registerMSIPayment(plan.id, {
         paid_on: paymentDate,
-        amount: paymentAmount,
+        amount: effectivePaymentAmount,
         payment_source: paymentSource.trim(),
+        settle_in_full: paymentMode === 'full',
       });
       onChanged();
     } catch (err) {
@@ -1119,16 +1122,31 @@ function PlanDetailModal({
           <ThemedText type="small" themeColor="textSecondary">
             Register a payment
           </ThemedText>
-          <TextField label="Amount" value={paymentAmount} onChangeText={setPaymentAmount} keyboardType="decimal-pad" />
+
+          <SegmentedButtons
+            value={paymentMode}
+            onValueChange={(value) => setPaymentMode(value as 'monthly' | 'full')}
+            buttons={[
+              { value: 'monthly', label: 'Monthly payment' },
+              { value: 'full', label: 'Pay in full' },
+            ]}
+          />
+
+          {paymentMode === 'full' ? (
+            <RowItem label="Amount (remaining balance)" value={money(plan.remaining_balance)} />
+          ) : (
+            <TextField label="Amount" value={paymentAmount} onChangeText={setPaymentAmount} keyboardType="decimal-pad" />
+          )}
+
           <DateField label="Paid on" value={paymentDate} onChange={setPaymentDate} />
           <TextField
             label="Source"
             value={paymentSource}
             onChangeText={setPaymentSource}
-            placeholder="e.g. Card autopay"
+            placeholder={paymentMode === 'full' ? 'e.g. Payoff transfer' : 'e.g. Card autopay'}
           />
           <PrimaryButton
-            label="Register payment"
+            label={paymentMode === 'full' ? 'Register full payoff' : 'Register payment'}
             variant="secondary"
             loading={registeringPayment}
             onPress={handleRegisterPayment}

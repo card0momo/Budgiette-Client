@@ -188,6 +188,7 @@ export type MSIPaymentCreate = {
   paid_on: string;
   amount: number | string;
   payment_source: string;
+  settle_in_full?: boolean;
 };
 
 export type NotificationRead = {

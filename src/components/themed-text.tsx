@@ -53,6 +53,7 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
       variant={TYPE_VARIANT[type]}
       style={[
         { color },
+        (type === 'title' || type === 'subtitle') && { fontWeight: '700' },
         type === 'linkPrimary' && { color: paperTheme.colors.primary },
         type === 'code' && { fontFamily: Fonts.mono, fontWeight: Platform.select({ android: '700' }) ?? '500' },
         style,
